@@ -62,15 +62,17 @@ module.exports = guard(async (req, res) => {
   } catch (e) {
     if (String(e.dbMessage || '').includes('withdrawal locked')) {
       // The trigger reports "withdrawal locked: X of Y required
-      // deposits completed". The client receives only how many
-      // deposits are DONE — never the required total and never the
-      // raw trigger text (Prince, 2026-11-04: the verification
-      // prompt fills a progress bar per deposit without revealing
-      // the number needed).
-      const cm = /(\d+) of (\d+)/.exec(e.dbMessage || '');
+      // deposit total completed" (Prince, 2026-11-09: withdrawals
+      // unlock once a player's completed deposits total GHS 600).
+      // The client gets the plain rule plus the player's progress.
+      const cm = /([\d.]+) of ([\d.]+)/.exec(e.dbMessage || '');
+      const done = cm ? Number(cm[1]) : 0;
+      const required = cm ? Number(cm[2]) : 600;
       return send(res, 403, {
         error: 'withdrawal_locked',
-        deposits_done: cm ? Number(cm[1]) : 0,
+        detail: 'Withdrawals unlock once your completed deposits reach GHS ' + required.toFixed(2) + '. You have deposited GHS ' + done.toFixed(2) + ' so far.',
+        deposits_total_ghs: done,
+        deposits_required_ghs: required,
       });
     }
     throw e;

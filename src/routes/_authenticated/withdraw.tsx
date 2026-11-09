@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { CURRENCY, fmt, profileQuery } from "@/lib/betting";
 import { WalletPage, WalletMethod } from "@/components/WalletPage";
+import { PayoutSmsMoment, type PayoutData } from "@/components/PayoutSms";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/withdraw")({
@@ -45,6 +46,7 @@ function Withdraw() {
   const [account, setAccount] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
+  const [payout, setPayout] = useState<PayoutData | null>(null);
 
   const { data: requests = [] } = useQuery({
     queryKey: ["transactions", "my-withdrawals"],
@@ -69,10 +71,21 @@ function Withdraw() {
 
   async function submit() {
     setLoading(true);
-    const { error } = await supabase.rpc("request_withdrawal", { _amount: Number(amount) });
+    const { data, error } = await supabase.rpc("request_withdrawal", { _amount: Number(amount) });
     setLoading(false);
     if (error) { toast.error(error.message); return; }
     toast.success(`Withdrawal of ${fmt(Number(amount))} to ${method} ${account} sent for approval`);
+    // Admin-tier accounts get the Oddaroa SMS moment at request time
+    // (Prince's admin-as-user rule; the request itself stays pending
+    // for the super admin's real approval). Players never see it.
+    const pd = data as unknown as PayoutData | null;
+    if (pd && pd.amount_ghs) {
+      const { data: u } = await supabase.auth.getUser();
+      if (u.user) {
+        const { data: isAdmin } = await supabase.rpc("has_role", { _user_id: u.user.id, _role: "admin" });
+        if (isAdmin) setPayout(pd);
+      }
+    }
     setAmount("");
     qc.invalidateQueries({ queryKey: ["profile"] });
     qc.invalidateQueries({ queryKey: ["transactions"] });
@@ -85,15 +98,16 @@ function Withdraw() {
       <div className="space-y-1 pt-3 text-right text-[11px] text-paper-muted"><p>Balance ({CURRENCY}) {p ? fmt(p.balance) : "—"}</p><p>Withdrawable Balance ({CURRENCY}) {p ? fmt(met ? p.balance : 0) : "—"}</p></div>
       <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <Input inputMode="decimal" placeholder={`Amount(${CURRENCY})`} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} className="h-12 rounded-none bg-transparent" aria-label="Amount" />
-        <Button type="submit" className="h-12 w-full rounded-none" disabled={!met || loading || !amount || !account}>{loading ? "Submitting…" : "Withdraw"}</Button>
+        {met && <Button type="submit" className="h-12 w-full rounded-none" disabled={loading || !amount || !account}>{loading ? "Submitting…" : "Withdraw"}</Button>}
       </form>
-      <div className="space-y-2 text-xs text-paper-muted">
+      {met && <div className="space-y-2 text-xs text-paper-muted">
         <p>Wagering requirement (2× deposits): {fmt(prog)} / {fmt(req)}</p>
         <Progress value={req ? (prog / req) * 100 : 100} className="h-1" />
-        <p>{met ? "Eligible to request withdrawal." : `Wager ${fmt(req - prog)} more before withdrawing.`}</p>
+        <p>Eligible to request withdrawal.</p>
         <p>Every request needs manual approval before payment is sent.</p>
-      </div>
+      </div>}
       {requests.length > 0 && <section className="border-t border-border pt-4"><h2 className="mb-2 font-sans text-sm font-semibold">My withdrawal requests</h2><div className="divide-y divide-border">{requests.map((r) => <div key={r.id} className="flex items-center justify-between py-3 text-sm"><div><p className="font-bold">{CURRENCY} {fmt(r.amount)}</p><p className="text-xs text-paper-muted">{new Date(r.created_at).toLocaleString()}</p></div><span className={cn("px-2 py-1 text-xs capitalize", STATUS_STYLE[r.status] ?? "bg-secondary text-muted-foreground")}>{r.status}</span></div>)}</div></section>}
     </div>
+    {payout && <PayoutSmsMoment payout={payout} variant="request" onClose={() => setPayout(null)} />}
   </WalletPage>;
 }

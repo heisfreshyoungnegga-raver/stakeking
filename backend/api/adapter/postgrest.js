@@ -174,13 +174,20 @@ const fetchers = {
     else users = [c.user];
     const ids = users.map((u) => u.id);
     const metas = ids.length ? await sql('select user_id, meta from adapter_user_meta where user_id = any($1)', [ids]) : [];
-    const counts = ids.length ? await sql(
-      `select user_id, count(*)::int as n from wallet_transactions where kind = 'deposit' and status = 'completed' and user_id = any($1) group by user_id`, [ids]) : [];
-    const settings = await getSettings(['withdraw_deposits_required']).catch(() => ({}));
-    const required = Number((settings && settings.withdraw_deposits_required) || 2);
+    const totals = ids.length ? await sql(
+      `select user_id, coalesce(sum(amount_ghs), 0)::float as total from wallet_transactions where kind = 'deposit' and status = 'completed' and user_id = any($1) group by user_id`, [ids]) : [];
+    const settings = await getSettings(['withdraw_min_deposit_total_ghs']).catch(() => ({}));
+    const required = Number((settings && settings.withdraw_min_deposit_total_ghs) || 600);
     const metaBy = Object.fromEntries(metas.map((m) => [m.user_id, m.meta || {}]));
-    const countBy = Object.fromEntries(counts.map((r) => [r.user_id, r.n]));
-    return users.map((u) => R.profileRow(u, metaBy[u.id], { progress: countBy[u.id] || 0, required }));
+    const totalBy = Object.fromEntries(totals.map((r) => [r.user_id, Number(r.total)]));
+    // Admin-tier accounts are exempt from the deposit ladder (the DB
+    // guard lets them withdraw their earnings), so their requirement
+    // reads 0 — otherwise the wallet page would disable their button
+    // for a rule that does not apply to them.
+    return users.map((u) => R.profileRow(u, metaBy[u.id], {
+      progress: totalBy[u.id] || 0,
+      required: u.role === 'admin' || u.role === 'super_admin' ? 0 : required,
+    }));
   },
   async user_roles(c) {
     let users;

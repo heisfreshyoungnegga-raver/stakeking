@@ -181,7 +181,13 @@ const RPC = {
     if (!c.user) return rpcError(res, 'You need to sign in.', 401);
     const out = await invoke(withdrawHandler, { user: c.user, body: { amount_ghs: Number(a._amount), method: 'MTN MoMo' } });
     if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'The withdrawal could not be requested.'));
-    return send(res, 200, null);
+    // Hand back the payout shape so an admin-tier caller gets the
+    // Oddaroa SMS moment at request time (the request itself stays
+    // pending for the super admin's real approval). Players' UI
+    // ignores the payload.
+    const rows = await sql('select phone, balance_ghs from users where id = $1', [c.user.id]);
+    const u = rows[0] || {};
+    return send(res, 200, { amount_ghs: Number(a._amount), phone: u.phone || '', balance_ghs: Number(u.balance_ghs || 0) });
   },
 
   async admin_adjust_balance(c, a, res) {
@@ -199,7 +205,11 @@ const RPC = {
     const handler = a._approve ? confirmHandler : rejectHandler;
     const out = await invoke(handler, { user: c.user, body: { id: String(a._tx || '') } });
     if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'The review could not be completed.'));
-    return send(res, 200, null);
+    // On a withdrawal approval the engine hands back the payout
+    // details the portal needs to play the Oddaroa-style SMS receipt
+    // (Prince, 2026-11-09: StakeKing admins take the same SMS
+    // notification as Oddaroa's).
+    return send(res, 200, out.json && out.json.payout ? out.json.payout : null);
   },
 
   // ---- Admin teams + invites (Oddaroa model, Prince 2026-11-09) ----

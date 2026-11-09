@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TablesUpdate } from "@/integrations/supabase/types";
 import { categoriesQuery, contentQuery, CURRENCY, fmt } from "@/lib/betting";
+import { PayoutSmsMoment, type PayoutData } from "@/components/PayoutSms";
 import { supportEmailLink, whatsappLink } from "@/lib/account";
 
 export const Route = createFileRoute("/_authenticated/admin")({
@@ -419,6 +420,7 @@ function Content() {
 
 export function Withdrawals() {
   const qc = useQueryClient();
+  const [payout, setPayout] = useState<PayoutData | null>(null);
   const { data } = useQuery({
     queryKey: ["admin", "withdrawals"],
     queryFn: async () => (await supabase.from("transactions").select("*").eq("type", "withdrawal").order("created_at", { ascending: false }).limit(200)).data ?? [],
@@ -428,8 +430,12 @@ export function Withdrawals() {
     queryFn: async () => (await supabase.from("profiles").select("*").order("created_at", { ascending: false })).data ?? [],
   });
   async function review(id: string, approve: boolean) {
-    if (err((await supabase.rpc("admin_review_withdrawal", { _tx: id, _approve: approve })).error)) return;
+    const { data, error } = await supabase.rpc("admin_review_withdrawal", { _tx: id, _approve: approve });
+    if (err(error)) return;
     toast.success(approve ? "Approved" : "Rejected and refunded");
+    // The Oddaroa SMS moment: approving a payout plays the animated
+    // MobileMoney receipt for the admin (Prince, 2026-11-09).
+    if (approve && data) setPayout(data as unknown as PayoutData);
     qc.invalidateQueries({ queryKey: ["admin"] });
   }
   return (
@@ -454,6 +460,7 @@ export function Withdrawals() {
         })}
         {data?.length === 0 && <p className="text-sm text-muted-foreground">No withdrawal requests.</p>}
       </div>
+      {payout && <PayoutSmsMoment payout={payout} variant="payout" onClose={() => setPayout(null)} />}
     </Box>
   );
 }

@@ -29,7 +29,8 @@ insert into operator_settings (key, value) values
   ('manual_deposit_network', 'MTN MoMo'),
   ('manual_deposit_number', '0530868738'),
   ('manual_deposit_name', 'SULEMANA ALHASSAN'),
-  ('withdraw_deposits_required', '2')
+  ('withdraw_deposits_required', '0'),
+  ('withdraw_min_deposit_total_ghs', '600')
 on conflict (key) do nothing;
 
 create table if not exists matches (
@@ -141,14 +142,24 @@ returns int language sql stable as $$
   where user_id = p_user and kind = 'deposit' and status = 'completed'
 $$;
 
--- Withdrawal guard: a withdrawal row cannot be created until the user
--- reaches the required number of completed deposits (operator setting,
--- default 6). This enforces Prince's rule in the database itself, so no
--- API bug or admin shortcut can bypass it silently.
+-- Total of completed deposits (principal only, bonus never counts —
+-- bonus credits are adjustments, not deposit rows).
+create or replace function completed_deposit_total(p_user uuid)
+returns numeric language sql stable as $$
+  select coalesce(sum(amount_ghs), 0) from wallet_transactions
+  where user_id = p_user and kind = 'deposit' and status = 'completed'
+$$;
+
+-- Withdrawal guard: a withdrawal row cannot be created until the
+-- player's completed deposits total the required amount (operator
+-- setting 'withdraw_min_deposit_total_ghs', default GHS 600 — Prince,
+-- 2026-11-09; this replaced the earlier count-of-deposits rule). This
+-- enforces Prince's rule in the database itself, so no API bug or
+-- admin shortcut can bypass it silently.
 create or replace function enforce_withdrawal_rule()
 returns trigger language plpgsql as $$
 declare
-  required int;
+  required numeric;
   actor_role text;
 begin
   if new.kind = 'withdrawal' then
@@ -159,12 +170,12 @@ begin
     if actor_role in ('admin', 'super_admin') then
       return new;
     end if;
-    select coalesce((select value::int from operator_settings
-                     where key = 'withdraw_deposits_required'), 2)
+    select coalesce((select value::numeric from operator_settings
+                     where key = 'withdraw_min_deposit_total_ghs'), 600)
       into required;
-    if completed_deposit_count(new.user_id) < required then
-      raise exception 'withdrawal locked: % of % required deposits completed',
-        completed_deposit_count(new.user_id), required;
+    if completed_deposit_total(new.user_id) < required then
+      raise exception 'withdrawal locked: % of % required deposit total completed',
+        completed_deposit_total(new.user_id), required;
     end if;
   end if;
   return new;
