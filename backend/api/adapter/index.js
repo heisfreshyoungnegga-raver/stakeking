@@ -18,7 +18,7 @@ function applyCors(req, res) {
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'authorization, apikey, content-type, prefer, x-client-info, x-supabase-api-version');
+  res.setHeader('Access-Control-Allow-Headers', 'authorization, apikey, content-type, prefer, accept-profile, content-profile, x-client-info, x-supabase-api-version, x-retry-count');
   res.setHeader('Access-Control-Expose-Headers', 'content-range, content-profile, www-authenticate');
   res.setHeader('Access-Control-Max-Age', '86400');
 }

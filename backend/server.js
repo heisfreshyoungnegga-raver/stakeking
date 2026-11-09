@@ -63,13 +63,18 @@ const adapter = require('./api/adapter');
 // an answer to the preflight) the browser blocks every response and
 // the site renders its empty states even though the API is healthy
 // (found live 2026-11-09: board empty while curl returned rows).
+// The allow-headers list must cover EVERY header supabase-js sends —
+// notably accept-profile (sent on every PostgREST request by
+// supabase-js 2.119) and x-retry-count (its retries). Miss one and
+// Chrome kills the preflight: the board renders empty while every
+// curl/node test passes.
 function applyCors(req, res) {
   const origin = req.headers.origin;
   if (!origin) return;
   res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'authorization, apikey, content-type, prefer, x-client-info, x-supabase-api-version');
+  res.setHeader('Access-Control-Allow-Headers', 'authorization, apikey, content-type, prefer, accept-profile, content-profile, x-client-info, x-supabase-api-version, x-retry-count');
   res.setHeader('Access-Control-Expose-Headers', 'content-range, content-profile, www-authenticate');
   res.setHeader('Access-Control-Max-Age', '86400');
 }
