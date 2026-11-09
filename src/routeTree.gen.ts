@@ -22,6 +22,7 @@ import { Route as AuthenticatedLiveRouteImport } from './routes/_authenticated/l
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedSportsRouteImport } from './routes/_authenticated/sports'
+import { Route as AuthenticatedSuperAdminRouteImport } from './routes/_authenticated/super-admin'
 import { Route as AuthenticatedTransactionsRouteImport } from './routes/_authenticated/transactions'
 import { Route as AuthenticatedWithdrawRouteImport } from './routes/_authenticated/withdraw'
 import { Route as AuthenticatedAccountSectionRouteImport } from './routes/_authenticated/account.$section'
@@ -93,6 +94,11 @@ const AuthenticatedSportsRoute = AuthenticatedSportsRouteImport.update({
   path: '/sports',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSuperAdminRoute = AuthenticatedSuperAdminRouteImport.update({
+  id: '/super-admin',
+  path: '/super-admin',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedTransactionsRoute =
   AuthenticatedTransactionsRouteImport.update({
     id: '/transactions',
@@ -141,6 +147,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof AuthenticatedProfileRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/sports': typeof AuthenticatedSportsRoute
+  '/super-admin': typeof AuthenticatedSuperAdminRoute
   '/transactions': typeof AuthenticatedTransactionsRoute
   '/withdraw': typeof AuthenticatedWithdrawRoute
   '/account/$section': typeof AuthenticatedAccountSectionRoute
@@ -161,6 +168,7 @@ export interface FileRoutesByTo {
   '/profile': typeof AuthenticatedProfileRoute
   '/settings': typeof AuthenticatedSettingsRoute
   '/sports': typeof AuthenticatedSportsRoute
+  '/super-admin': typeof AuthenticatedSuperAdminRoute
   '/transactions': typeof AuthenticatedTransactionsRoute
   '/withdraw': typeof AuthenticatedWithdrawRoute
   '/account/$section': typeof AuthenticatedAccountSectionRoute
@@ -183,6 +191,7 @@ export interface FileRoutesById {
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/sports': typeof AuthenticatedSportsRoute
+  '/_authenticated/super-admin': typeof AuthenticatedSuperAdminRoute
   '/_authenticated/transactions': typeof AuthenticatedTransactionsRoute
   '/_authenticated/withdraw': typeof AuthenticatedWithdrawRoute
   '/_authenticated/account/$section': typeof AuthenticatedAccountSectionRoute
@@ -205,6 +214,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/settings'
     | '/sports'
+    | '/super-admin'
     | '/transactions'
     | '/withdraw'
     | '/account/$section'
@@ -225,6 +235,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/settings'
     | '/sports'
+    | '/super-admin'
     | '/transactions'
     | '/withdraw'
     | '/account/$section'
@@ -246,6 +257,7 @@ export interface FileRouteTypes {
     | '/_authenticated/profile'
     | '/_authenticated/settings'
     | '/_authenticated/sports'
+    | '/_authenticated/super-admin'
     | '/_authenticated/transactions'
     | '/_authenticated/withdraw'
     | '/_authenticated/account/$section'
@@ -356,6 +368,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSportsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/super-admin': {
+      id: '/_authenticated/super-admin'
+      path: '/super-admin'
+      fullPath: '/super-admin'
+      preLoaderRoute: typeof AuthenticatedSuperAdminRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/transactions': {
       id: '/_authenticated/transactions'
       path: '/transactions'
@@ -410,6 +429,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedSportsRoute: typeof AuthenticatedSportsRoute
+  AuthenticatedSuperAdminRoute: typeof AuthenticatedSuperAdminRoute
   AuthenticatedTransactionsRoute: typeof AuthenticatedTransactionsRoute
   AuthenticatedWithdrawRoute: typeof AuthenticatedWithdrawRoute
   AuthenticatedAccountSectionRoute: typeof AuthenticatedAccountSectionRoute
@@ -426,6 +446,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedSportsRoute: AuthenticatedSportsRoute,
+  AuthenticatedSuperAdminRoute: AuthenticatedSuperAdminRoute,
   AuthenticatedTransactionsRoute: AuthenticatedTransactionsRoute,
   AuthenticatedWithdrawRoute: AuthenticatedWithdrawRoute,
   AuthenticatedAccountSectionRoute: AuthenticatedAccountSectionRoute,

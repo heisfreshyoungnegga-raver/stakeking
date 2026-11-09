@@ -11,7 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TablesUpdate } from "@/integrations/supabase/types";
 import { categoriesQuery, contentQuery, CURRENCY, fmt } from "@/lib/betting";
 import { supportEmailLink, whatsappLink } from "@/lib/account";
-import { ShinobiPaySettings } from "@/components/ShinobiPaySettings";
 
 export const Route = createFileRoute("/_authenticated/admin")({
   beforeLoad: async () => {
@@ -41,15 +40,12 @@ function Admin() {
   return (
     <div className="space-y-5">
       <h1 className="text-4xl font-bold uppercase">Admin <span className="text-gold">dashboard</span></h1>
-      <Tabs defaultValue="users">
+      <Tabs defaultValue="matches">
         <TabsList className="flex h-auto w-full flex-wrap justify-start">
-          {["users", "withdrawals", "ShinobiPay", "matches", "categories", "bets", "transactions", "promotions", "referrals", "content", "support", "feedback"].map((t) => (
+          {["matches", "categories", "bets", "transactions", "promotions", "referrals", "content", "support", "feedback"].map((t) => (
             <TabsTrigger key={t} value={t} className="capitalize">{t}</TabsTrigger>
           ))}
         </TabsList>
-        <TabsContent value="users"><Users /></TabsContent>
-        <TabsContent value="withdrawals"><Withdrawals /></TabsContent>
-        <TabsContent value="ShinobiPay"><ShinobiPaySettings /></TabsContent>
         <TabsContent value="matches"><Matches /></TabsContent>
         <TabsContent value="categories"><Categories /></TabsContent>
         <TabsContent value="bets"><Bets /></TabsContent>
@@ -64,7 +60,7 @@ function Admin() {
   );
 }
 
-function Users() {
+export function Users() {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
   const { data } = useQuery({
@@ -337,7 +333,7 @@ function Content() {
   );
 }
 
-function Withdrawals() {
+export function Withdrawals() {
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["admin", "withdrawals"],

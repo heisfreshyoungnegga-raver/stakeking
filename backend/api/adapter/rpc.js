@@ -62,6 +62,7 @@ const RPC = {
     const rows = await sql('select role from users where id = $1', [a._user_id]);
     if (!rows.length) return false;
     if (a._role === 'admin') return rows[0].role === 'admin' || rows[0].role === 'super_admin';
+    if (a._role === 'super_admin') return rows[0].role === 'super_admin';
     return true; // every account holds the plain 'user' role
   },
 
