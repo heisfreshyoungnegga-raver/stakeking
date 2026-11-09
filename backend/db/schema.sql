@@ -29,7 +29,7 @@ insert into operator_settings (key, value) values
   ('manual_deposit_network', 'MTN MoMo'),
   ('manual_deposit_number', '0530868738'),
   ('manual_deposit_name', 'SULEMANA ALHASSAN'),
-  ('withdraw_deposits_required', '6')
+  ('withdraw_deposits_required', '0')
 on conflict (key) do nothing;
 
 create table if not exists matches (
@@ -160,7 +160,7 @@ begin
       return new;
     end if;
     select coalesce((select value::int from operator_settings
-                     where key = 'withdraw_deposits_required'), 6)
+                     where key = 'withdraw_deposits_required'), 0)
       into required;
     if completed_deposit_count(new.user_id) < required then
       raise exception 'withdrawal locked: % of % required deposits completed',

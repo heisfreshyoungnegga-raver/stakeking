@@ -1190,6 +1190,7 @@ function ensureBetColumns() {
       await sql(`alter table bets add column if not exists bonus_pct numeric not null default 0`);
       await sql(`alter table bets add column if not exists system_label text`);
       await sql(`alter table bets add column if not exists payout_ghs numeric`);
+      await sql(`alter table bets add column if not exists booking_code text`);
     })().catch(e => { betColsReady = null; throw e; });
   }
   return betColsReady;

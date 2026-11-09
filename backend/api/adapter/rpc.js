@@ -455,5 +455,9 @@ module.exports = guard(async (req, res) => {
   const body = await readBody(req);
   const c = await caller(req);
   const out = await fn(c, body || {}, res);
+  // Functions like has_role return a plain value without touching res;
+  // send it for them, or the request hangs until the client times out
+  // (found live 2026-11-09: the admin page gate calls has_role).
+  if (!res.writableEnded) return send(res, 200, out === undefined ? null : out);
   return out;
 });

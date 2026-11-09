@@ -157,7 +157,7 @@ const fetchers = {
     const counts = ids.length ? await sql(
       `select user_id, count(*)::int as n from wallet_transactions where kind = 'deposit' and status = 'completed' and user_id = any($1) group by user_id`, [ids]) : [];
     const settings = await getSettings().catch(() => ({}));
-    const required = Number((settings && settings.withdraw_deposits_required) || 6);
+    const required = Number((settings && settings.withdraw_deposits_required) || 0);
     const metaBy = Object.fromEntries(metas.map((m) => [m.user_id, m.meta || {}]));
     const countBy = Object.fromEntries(counts.map((r) => [r.user_id, r.n]));
     return users.map((u) => R.profileRow(u, metaBy[u.id], { progress: countBy[u.id] || 0, required }));
