@@ -12,6 +12,13 @@ const depositOtpHandler = require('../_handlers/wallet/deposit-otp');
 const balanceEditHandler = require('../_handlers/admin/balance-edit');
 const confirmHandler = require('../_handlers/admin/confirm');
 const rejectHandler = require('../_handlers/admin/reject');
+const inviteAdminHandler = require('../_handlers/admin/invite-admin');
+const verifyAdminHandler = require('../_handlers/admin/verify-admin');
+const myDashboardHandler = require('../_handlers/admin/my-dashboard');
+const payoutRequestHandler = require('../_handlers/admin/payout-request');
+const payoutHandler = require('../_handlers/admin/payout');
+
+const isSuper = (c) => c.service || (c.user && c.user.role === 'super_admin');
 
 // Deposit confirmations: a verified number+amount may dispatch
 // exactly one prompt, mirroring the UI's verify-first flow. In-memory
@@ -193,6 +200,67 @@ const RPC = {
     const out = await invoke(handler, { user: c.user, body: { id: String(a._tx || '') } });
     if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'The review could not be completed.'));
     return send(res, 200, null);
+  },
+
+  // ---- Admin teams + invites (Oddaroa model, Prince 2026-11-09) ----
+  // The super admin mints one-time invite links; registering through
+  // one creates an admin (pending until verified) or a super admin
+  // (active at once). Every admin-tier account owns a referral code
+  // from birth; players who register with it join that admin's team
+  // (users.invited_by), and the admin's portal shows only their team,
+  // their commissions and their payout requests.
+
+  async create_admin_invite(c, a, res) {
+    if (!isSuper(c)) return rpcError(res, 'Super admin access required.', 403);
+    const out = await invoke(inviteAdminHandler, {
+      user: c.user, method: 'POST',
+      body: { kind: a._kind === 'super_admin' ? 'super_admin' : 'admin', hours: 48 },
+    });
+    if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'The invite could not be created.'));
+    return send(res, 200, {
+      token: out.json.token, kind: out.json.kind, expires_at: out.json.expires_at,
+      path: '/register?admin_invite=' + out.json.token,
+    });
+  },
+
+  async list_admin_invites(c, a, res) {
+    if (!isSuper(c)) return rpcError(res, 'Super admin access required.', 403);
+    const out = await invoke(inviteAdminHandler, { user: c.user, method: 'GET' });
+    if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'The invites could not be loaded.'));
+    return send(res, 200, out.json.invites || []);
+  },
+
+  async verify_admin(c, a, res) {
+    if (!isSuper(c)) return rpcError(res, 'Super admin access required.', 403);
+    const out = await invoke(verifyAdminHandler, {
+      user: c.user, method: 'POST',
+      body: { id: String(a._user || ''), action: a._action === 'remove' ? 'remove' : 'verify' },
+    });
+    if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'That admin could not be updated.'));
+    return send(res, 200, null);
+  },
+
+  async my_team(c, a, res) {
+    if (!isAdmin(c)) return rpcError(res, 'Admin access required.', 403);
+    const out = await invoke(myDashboardHandler, { user: c.user, method: 'GET' });
+    if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'Your team could not be loaded.'));
+    return send(res, 200, out.json);
+  },
+
+  async request_commission_payout(c, a, res) {
+    if (!isAdmin(c)) return rpcError(res, 'Admin access required.', 403);
+    const out = await invoke(payoutRequestHandler, { user: c.user, method: 'POST', body: {} });
+    if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'The payout request could not be sent.'));
+    return send(res, 200, out.json);
+  },
+
+  async pay_out_admin(c, a, res) {
+    if (!isSuper(c)) return rpcError(res, 'Super admin access required.', 403);
+    const out = await invoke(payoutHandler, {
+      user: c.user, method: 'POST', body: { earner_id: String(a._user || '') },
+    });
+    if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'That payout could not be completed.'));
+    return send(res, 200, out.json);
   },
 
   async admin_settle_bet(c, a, res) {

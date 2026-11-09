@@ -93,6 +93,7 @@ function profileRow(user, meta, wager) {
     balance: Number(user.balance_ghs || 0),
     country: m.country || COUNTRY_BY_CURRENCY[currencyOfPhone(user.phone)] || 'Ghana',
     referral_code: user.invite_code || null,
+    status: user.status || 'active',
     wager_progress: Number(w.progress || 0),
     wager_required: Number(w.required || 0),
     created_at: iso(user.created_at),

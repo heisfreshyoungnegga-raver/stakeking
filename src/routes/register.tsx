@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Eye, EyeOff } from "lucide-react";
@@ -53,6 +53,16 @@ function Register() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Invite + referral links land here as ?admin_invite=<token> (from the
+  // super admin) or ?ref=<code> (an admin's team referral link).
+  const [invite, setInvite] = useState("");
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const inv = p.get("admin_invite") || "";
+    if (inv) setInvite(inv);
+    const ref = p.get("ref") || "";
+    if (ref) setF((prev) => ({ ...prev, referral: ref.toUpperCase() }));
+  }, []);
   const country = COUNTRIES[0];
   const strength = passwordStrength(f.password);
   const set = (k: keyof typeof f, v: string | boolean) => setF((p) => ({ ...p, [k]: v }));
@@ -71,12 +81,13 @@ function Register() {
       email: r.data.email,
       password: r.data.password,
       options: {
-        data: { full_name: r.data.fullName, date_of_birth: r.data.dob, country: "Ghana", phone, referral_code: r.data.referral || "" },
+        data: { full_name: r.data.fullName, date_of_birth: r.data.dob, country: "Ghana", phone, referral_code: r.data.referral || "", ...(invite ? { admin_invite: invite } : {}) },
       },
     });
     setLoading(false);
     if (error) { toast.error(error.message); return; }
     if (data.session) navigate({ to: "/sports" });
+    else if (invite) { toast.success("Admin account created — the super admin will verify it, then you can log in."); navigate({ to: "/login" }); }
     else toast.success("Account created — please log in.");
   }
 
@@ -84,6 +95,11 @@ function Register() {
 
   return (
     <AuthCard title="Create account" subtitle="Join free — deposit GHS 1, play with GHS 1">
+      {invite && (
+        <div className="mb-4 rounded-lg border border-gold/40 bg-gold/10 p-3 text-sm">
+          <b>Admin invite.</b> You are creating an admin account for StakeKing. After you register, the super admin verifies your account — then you can log in and open the Admin Portal.
+        </div>
+      )}
       <form onSubmit={submit} className="space-y-4" noValidate>
         <div>
           <Label htmlFor="fullName">Full name</Label>
@@ -110,10 +126,12 @@ function Register() {
           </div>
           {err("phone")}
         </div>
-        <div>
-          <Label htmlFor="referral">Referral code <span className="text-muted-foreground">(optional)</span></Label>
-          <Input id="referral" value={f.referral} onChange={(e) => set("referral", e.target.value.toUpperCase())} className="mt-1.5 h-11 uppercase" />
-        </div>
+        {!invite && (
+          <div>
+            <Label htmlFor="referral">Referral code <span className="text-muted-foreground">(optional)</span></Label>
+            <Input id="referral" value={f.referral} onChange={(e) => set("referral", e.target.value.toUpperCase())} className="mt-1.5 h-11 uppercase" />
+          </div>
+        )}
         <div>
           <Label htmlFor="password">Password</Label>
           <div className="relative mt-1.5">

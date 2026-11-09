@@ -92,6 +92,7 @@ module.exports = guard(async (req, res) => {
         password: body.password || '',
         display_name: data.full_name || data.display_name || '',
         ref: data.referral_code || undefined,
+        admin_invite: data.admin_invite || undefined,
       },
     });
     if (!out.json || !out.json.user) {

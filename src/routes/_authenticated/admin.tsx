@@ -35,18 +35,23 @@ export const Route = createFileRoute("/_authenticated/admin")({
 
 const Box = ({ children }: { children: ReactNode }) => <div className="space-y-3 rounded-xl border border-border bg-card p-4">{children}</div>;
 const err = (e: { message: string } | null) => { if (e) { toast.error(e.message); return true; } return false; };
+// Adapter-added RPCs (admin teams + invites) are not in the generated
+// Supabase types, so call them through this narrow untyped bridge.
+export const rpcCall = (name: string, args: Record<string, unknown> = {}) =>
+  (supabase.rpc as unknown as (n: string, a: Record<string, unknown>) => Promise<{ data: any; error: { message: string } | null }>)(name, args);
 
 function Admin() {
   return (
     <div className="space-y-5">
-      <h1 className="text-4xl font-bold uppercase">Admin <span className="text-gold">dashboard</span></h1>
+      <h1 className="text-4xl font-bold uppercase">Admin <span className="text-gold">portal</span></h1>
       <Tabs defaultValue="matches">
         <TabsList className="flex h-auto w-full flex-wrap justify-start">
-          {["matches", "categories", "bets", "transactions", "promotions", "referrals", "content", "support", "feedback"].map((t) => (
-            <TabsTrigger key={t} value={t} className="capitalize">{t}</TabsTrigger>
+          {["matches", "team", "categories", "bets", "transactions", "promotions", "referrals", "content", "support", "feedback"].map((t) => (
+            <TabsTrigger key={t} value={t} className="capitalize">{t === "team" ? "My Team" : t}</TabsTrigger>
           ))}
         </TabsList>
         <TabsContent value="matches"><Matches /></TabsContent>
+        <TabsContent value="team"><MyTeam /></TabsContent>
         <TabsContent value="categories"><Categories /></TabsContent>
         <TabsContent value="bets"><Bets /></TabsContent>
         <TabsContent value="transactions"><Transactions /></TabsContent>
@@ -87,12 +92,91 @@ export function Users() {
               <p className="truncate text-xs text-muted-foreground">{u.email} · {u.phone} {u.referral_code && `· ref ${u.referral_code}`}</p>
             </div>
             <div className="flex items-center gap-2">
+              {(u as { status?: string }).status === "pending" && <span className="rounded bg-gold/20 px-2 py-0.5 text-xs font-bold text-gold">PENDING ADMIN</span>}
               <span className="font-bold text-primary">{fmt(u.balance)} {CURRENCY}</span>
-              <Button size="sm" variant="secondary" onClick={() => adjust(u.id)}>Adjust</Button>
+              {(u as { status?: string }).status === "pending" ? (
+                <>
+                  <Button size="sm" variant="brand" onClick={async () => { if (err((await rpcCall("verify_admin", { _user: u.id, _action: "verify" })).error)) return; toast.success("Admin verified"); qc.invalidateQueries({ queryKey: ["admin"] }); }}>Verify</Button>
+                  <Button size="sm" variant="outline" onClick={async () => { if (err((await rpcCall("verify_admin", { _user: u.id, _action: "remove" })).error)) return; toast.success("Admin removed"); qc.invalidateQueries({ queryKey: ["admin"] }); }}>Remove</Button>
+                </>
+              ) : (
+                <Button size="sm" variant="secondary" onClick={() => adjust(u.id)}>Adjust</Button>
+              )}
             </div>
           </div>
         ))}
       </div>
+    </Box>
+  );
+}
+
+export function MyTeam() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["admin", "my-team"],
+    queryFn: async () => {
+      const r = await rpcCall("my_team");
+      if (r.error) throw new Error(r.error.message);
+      return r.data as {
+        invite_code: string;
+        invited_users: { id: string; phone: string; display_name: string | null; created_at: string; deposits_ghs: number }[];
+        commissions: { earned_ghs: number; paid_ghs: number; pending_ghs: number };
+        recent: { amount_ghs: number; pct: number; paid_at: string | null; created_at: string; from_phone: string }[];
+        payout_request: { amount_ghs: number } | null;
+        referrals_with_deposit: number;
+        commission_pct: number;
+      };
+    },
+  });
+  if (!data) return <Box><p className="text-sm text-muted-foreground">Loading your team…</p></Box>;
+  const link = `${window.location.origin}/register?ref=${data.invite_code}`;
+  return (
+    <Box>
+      <div>
+        <p className="text-sm font-semibold">Your referral link</p>
+        <p className="text-xs text-muted-foreground">Players who register with this link join your team, and you earn {data.commission_pct}% commission on their deposits.</p>
+        <div className="mt-2 flex gap-2">
+          <Input readOnly value={link} className="font-mono text-xs" />
+          <Button variant="brand" onClick={async () => { await navigator.clipboard.writeText(link).catch(() => {}); toast.success("Referral link copied"); }}>Copy</Button>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">Your code: <b className="text-gold">{data.invite_code}</b></p>
+      </div>
+      <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+        <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Team members</p><p className="text-lg font-bold">{data.invited_users.length}</p></div>
+        <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">With deposits</p><p className="text-lg font-bold">{data.referrals_with_deposit}</p></div>
+        <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Commission earned</p><p className="text-lg font-bold">{fmt(data.commissions.earned_ghs)} {CURRENCY}</p></div>
+        <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Pending payout</p><p className="text-lg font-bold">{fmt(data.commissions.pending_ghs)} {CURRENCY}</p></div>
+      </div>
+      {data.payout_request ? (
+        <p className="text-sm">Payout of <b>{fmt(data.payout_request.amount_ghs)} {CURRENCY}</b> requested — waiting for the super admin.</p>
+      ) : data.commissions.pending_ghs > 0 ? (
+        <Button variant="brand" onClick={async () => { if (err((await rpcCall("request_commission_payout")).error)) return; toast.success("Payout requested"); qc.invalidateQueries({ queryKey: ["admin", "my-team"] }); }}>Request payout</Button>
+      ) : null}
+      <div>
+        <p className="text-sm font-semibold">Team members</p>
+        <div className="divide-y divide-border">
+          {data.invited_users.length === 0 && <p className="py-2 text-sm text-muted-foreground">Nobody has joined through your link yet.</p>}
+          {data.invited_users.map((u) => (
+            <div key={u.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+              <span>{u.display_name || "—"} <span className="text-xs text-muted-foreground">{u.phone} · joined {new Date(u.created_at).toLocaleDateString()}</span></span>
+              <span className="font-semibold">{fmt(u.deposits_ghs)} {CURRENCY} deposited</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {data.recent.length > 0 && (
+        <div>
+          <p className="text-sm font-semibold">Recent commissions</p>
+          <div className="divide-y divide-border">
+            {data.recent.map((r, i) => (
+              <div key={i} className="flex items-center justify-between py-2 text-sm">
+                <span>{r.from_phone} <span className="text-xs text-muted-foreground">{new Date(r.created_at).toLocaleDateString()}</span></span>
+                <span className="font-semibold">+{fmt(r.amount_ghs)} {CURRENCY} <span className="text-xs text-muted-foreground">{r.paid_at ? "paid" : "pending"}</span></span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </Box>
   );
 }
