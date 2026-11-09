@@ -8,7 +8,24 @@ const rpc = require('./rpc');
 // Auth (gotrue.js), the table surface (postgrest.js) and the RPC
 // dispatcher (rpc.js) are all live.
 
+// CORS for the per-file Vercel mount, where server.js (which carries
+// the same logic for the Railway / single-function mounts) is
+// bypassed: the frontend's browser calls need the headers and a
+// preflight answer or every response is blocked client-side.
+function applyCors(req, res) {
+  const origin = req.headers.origin;
+  if (!origin) return;
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'authorization, apikey, content-type, prefer, x-client-info, x-supabase-api-version');
+  res.setHeader('Access-Control-Expose-Headers', 'content-range, content-profile, www-authenticate');
+  res.setHeader('Access-Control-Max-Age', '86400');
+}
+
 module.exports = async (req, res) => {
+  applyCors(req, res);
+  if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
   let path = String((req.url || '').split('?')[0]);
   // On Vercel the /auth/v1/* and /rest/v1/* surfaces reach this handler
   // either through catch-all route files (req.url stays original) or
