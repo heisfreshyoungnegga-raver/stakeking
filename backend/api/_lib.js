@@ -1221,6 +1221,11 @@ function ensureMatchColumns() {
       await msql(`alter table matches add column if not exists ft_stoppage int not null default 0`);
       await msql(`alter table matches add column if not exists betting_locked boolean not null default false`);
       await msql(`alter table matches add column if not exists odds_attempt_at timestamptz`);
+      // odds_full (the full market book) is read by the match list and
+      // the single-match view; the StakeKing schema was applied without
+      // it and /api/matches 500'd until it was added by hand on
+      // 2026-11-09. Self-heal it here like the others.
+      await msql(`alter table matches add column if not exists odds_full jsonb`);
       // 'postponed' joined the status vocabulary with the created-
       // games lifecycle (2026-11-05); the original CHECK only knew
       // upcoming/live/finished and rejected postponed games. The swap

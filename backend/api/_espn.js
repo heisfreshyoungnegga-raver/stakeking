@@ -20,6 +20,12 @@ const LEAGUES = {
   'uefa.europa': 'UEFA Europa League',
   'gha.1': 'Ghana Premier League',
   'usa.1': 'MLS',
+  // International windows (added 2026-11-09, same fix as PrimeStake
+  // 2026-11-08): during a break the club leagues go dark for a week+
+  // and the board empties; these three carry the fixtures through.
+  'uefa.nations': 'UEFA Nations League',
+  'concacaf.nations.league': 'CONCACAF Nations League',
+  'fifa.friendly': 'International Friendlies',
 };
 
 function americanToDecimal(v) {
