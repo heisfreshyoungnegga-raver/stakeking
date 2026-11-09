@@ -222,9 +222,14 @@ const fetchers = {
   },
   async booking_codes(c, req) {
     if (!c.user && !c.service) return [];
+    // Booking codes are public share artifacts (a code is meant to be
+    // loaded by whoever receives it), so the list is platform-wide for
+    // every signed-in user — the slip's "Recommended Football Codes"
+    // must show codes for all, not just the caller's own (Prince,
+    // 2026-11-09: "for all make them have it").
     const rows = isAdmin(c)
       ? await sql('select * from booking_codes order by created_at desc limit 1000')
-      : await sql('select * from booking_codes where user_id = $1 order by created_at desc limit 200', [c.user.id]);
+      : await sql('select * from booking_codes order by created_at desc limit 200');
     // Booking codes are shareable: an exact-code lookup by any
     // signed-in user returns that code's row, like the old app.
     const codeFilter = req && req.query && /^eq\.(.+)$/.exec(String(req.query.code || ''));

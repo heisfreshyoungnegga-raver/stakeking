@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Copy, Link2, MessageCircle, Send, Share2, Ticket, ZoomIn } from "lucide-react";
+import { Copy, Download, Link2, MessageCircle, Send, Share2, Ticket, ZoomIn } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useBetSlip, type Selection } from "@/lib/betslip";
-import { createBookingImage, deliverBookingImage, type BookingImageData } from "@/lib/booking-image";
+import { createBookingImage, deliverBookingImage, saveBookingImage, type BookingImageData } from "@/lib/booking-image";
 
 export function BookingShareSheet() {
   const [data, setData] = useState<BookingImageData | null>(null);
@@ -73,6 +73,7 @@ export function BookingShareSheet() {
           </div>
           <div className="flex justify-between gap-3 overflow-x-auto py-6">
             {[
+              { label: "Save Image", icon: Download, action: async () => { try { await saveBookingImage({ ...data, compact: true }); toast.success("Booking image saved"); } catch { toast.error("Unable to save image"); } }, className: "bg-secondary text-secondary-foreground" },
               { label: "Copy Link", icon: Link2, action: () => copy(bookingLink, "Booking link copied"), className: "bg-secondary text-secondary-foreground" },
               { label: "X", icon: null, action: () => social("X"), className: "bg-brand-ink text-primary-foreground" },
               { label: "Telegram", icon: Send, action: () => social("Telegram"), className: "bg-chart-3 text-primary-foreground" },
