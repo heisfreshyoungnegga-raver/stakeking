@@ -1,4 +1,4 @@
-const { msql: sql, expandOdds } = require('./_lib'); // catalog DB only: matches + operator_settings gates
+const { msql: sql, expandOdds, fillOdds, fullBookFromOdds } = require('./_lib'); // catalog DB only: matches + operator_settings gates
 
 // ESPN fixture sync, shared by the admin Sync button and the automatic
 // live refresh. Pulls scoreboards from ESPN's public API (no key needed)
@@ -196,17 +196,26 @@ function mapEvent(ev, leagueName) {
 }
 
 async function upsertMatch(m) {
+  // Derived full book (Correct Score, HT/FT, handicaps, half markets)
+  // from the match's completed 1X2 — the same fullBookFromOdds book
+  // operator-created matches carry. ESPN rows never hold a real
+  // provider book (API-Football writes its own af: rows), so deriving
+  // here can never clobber one. Empty when the 1X2 is incomplete:
+  // coalesce then keeps whatever book the row already has.
+  const book = fullBookFromOdds(fillOdds(m.odds || {}));
   await sql(
-    `insert into matches (league, home_team, away_team, starts_at, status, minute, score_home, score_away, odds, external_ref, home_logo, away_logo)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12)
+    `insert into matches (league, home_team, away_team, starts_at, status, minute, score_home, score_away, odds, external_ref, home_logo, away_logo, odds_full)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12, $13::jsonb)
      on conflict (external_ref) where external_ref is not null
      do update set league = excluded.league, home_team = excluded.home_team, away_team = excluded.away_team,
        starts_at = excluded.starts_at, status = excluded.status, minute = excluded.minute,
        score_home = excluded.score_home, score_away = excluded.score_away,
        home_logo = excluded.home_logo, away_logo = excluded.away_logo,
-       odds = case when excluded.odds::text = '{}' then matches.odds else excluded.odds end`,
+       odds = case when excluded.odds::text = '{}' then matches.odds else excluded.odds end,
+       odds_full = coalesce(excluded.odds_full, matches.odds_full)`,
     [m.league, m.home_team, m.away_team, m.starts_at, m.status, m.minute, m.score_home, m.score_away,
-     JSON.stringify(m.odds), m.external_ref, m.home_logo, m.away_logo]
+     JSON.stringify(m.odds), m.external_ref, m.home_logo, m.away_logo,
+     book.length ? JSON.stringify(book) : null]
   );
 }
 

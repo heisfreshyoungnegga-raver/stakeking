@@ -15,7 +15,7 @@
 //   (sport_key 'theoddsapi') so the admin side can see where we stand.
 // - No key configured = fully inert. Nothing here may break the
 //   matches list: every caller swallows errors.
-const { sql } = require('./_lib');
+const { sql, fillOdds, fullBookFromOdds } = require('./_lib');
 
 const API_BASE = 'https://api.the-odds-api.com/v4';
 const REGION = 'eu';
@@ -260,8 +260,12 @@ async function syncOddsApi() {
       const priced = pickBookOdds(ev);
       if (!priced) continue;
       const merged = { ...(hit.odds || {}), ...priced };
-      await sql('update matches set odds = $2::jsonb, odds_attempt_at = now() where id = $1',
-        [hit.id, JSON.stringify(merged)]).catch(() => {});
+      // Keep the derived full book (Correct Score etc.) in step with
+      // the repriced 1X2, same as the ESPN sweep. These are espn: rows;
+      // a real provider book only ever lives on af: rows.
+      const book = fullBookFromOdds(fillOdds(merged));
+      await sql('update matches set odds = $2::jsonb, odds_full = coalesce($3::jsonb, odds_full), odds_attempt_at = now() where id = $1',
+        [hit.id, JSON.stringify(merged), book.length ? JSON.stringify(book) : null]).catch(() => {});
       hit.odds = merged;
       updated++;
     }
