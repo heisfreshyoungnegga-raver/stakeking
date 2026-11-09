@@ -2,6 +2,7 @@ const { sql, readBody, send, guard, getSettings, cashoutQuoteFor, matchesById, g
 const { caller, isAdmin } = require('./caller');
 const { invoke } = require('./invoke');
 const { toEnginePick, toUiMarkets } = require('./markets');
+const { syncOddsApi } = require('../_oddsapi');
 const placeHandler = require('../_handlers/bets/place');
 const cashoutHandler = require('../_handlers/bets/cashout');
 const withdrawHandler = require('../_handlers/wallet/withdraw');
@@ -287,10 +288,18 @@ const RPC = {
     return send(res, 200, 'awaiting_webhook');
   },
 
-  // Fixtures and odds are owned by the engine feeds on StakeKing;
-  // the legacy sync RPCs answer truthfully with zero changes.
+  // Fixtures are owned by the engine feeds (ESPN + API-Football) on
+  // StakeKing; the legacy fixture sync answers truthfully with zero.
   async sync_football_fixtures(c, a, res) { return send(res, 200, 0); },
-  async apply_bookmaker_odds(c, a, res) { return send(res, 200, 0); },
+  // Odds come from The Odds API (Prince's pick, 2026-11-09):
+  // service/admin callers trigger a sync; it prices stored fixtures
+  // from real bookmaker books and returns how many were updated.
+  // Inert (returns 0) until ODDS_API_KEY is set.
+  async apply_bookmaker_odds(c, a, res) {
+    if (!c.service && !isAdmin(c)) return rpcError(res, 'Not allowed.', 403);
+    const n = await syncOddsApi().catch(() => 0);
+    return send(res, 200, n);
+  },
   async demo_deposit(c, a, res) { return rpcError(res, 'Demo deposits are retired on this platform.'); },
 
   // ---- ShinobiPay deposit flow (drives the UI's deposit page) ----

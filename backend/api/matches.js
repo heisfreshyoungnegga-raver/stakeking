@@ -2,6 +2,7 @@ const { msql, send, guard, isCustomMatch, customMatchState, fillOdds, maybeAutoS
 const singleMatch = require('./_handlers/match-single');
 const { maybeRefreshLive } = require('./_espn');
 const { afEnabled, maybeRefreshAf } = require('./_apifootball');
+const { maybeRefreshOdds } = require('./_oddsapi');
 
 // Cross-feed duplicate detection. The two feeds spell team names
 // differently (Stade Rennais vs Rennes, Olympiacos vs Olympiakos
@@ -89,6 +90,10 @@ module.exports = guard(async (req, res) => {
   if (af) await maybeRefreshAf().catch(() => {});
   await ensureMatchColumns().catch(() => {});
   await maybeRefreshLive().catch(() => {});
+  // Third provider (Prince, 2026-11-09): The Odds API prices the
+  // fixtures the other two feeds supply. Inert until ODDS_API_KEY is
+  // set; refresh is quota-gated inside the module.
+  await maybeRefreshOdds().catch(() => {});
   if (listCache.body && Date.now() - listCache.at < 20000) return send(res, 200, listCache.body);
   // Settle bets on matches the feeds have just finished (throttled
   // inside; a failure here must never break the list either).
