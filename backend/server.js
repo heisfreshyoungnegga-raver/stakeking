@@ -57,7 +57,11 @@ function serveStatic(req, res, pathname) {
 
 const adapter = require('./api/adapter');
 
-const server = http.createServer((req, res) => {
+// The dispatcher is exported so a single Vercel serverless function
+// can run the whole backend (the Hobby plan caps a deployment at 12
+// functions; this engine has 20+ route modules). On Railway it is
+// served by the http server at the bottom, exactly as before.
+const handler = (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   // The Vercel handlers read req.query; rebuild it from the URL.
   req.query = Object.fromEntries(url.searchParams);
@@ -76,6 +80,10 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify({ error: 'not_found' }));
   }
   return serveStatic(req, res, url.pathname);
-});
+};
 
-server.listen(PORT, () => console.log(`StakeKing backend listening on ${PORT}`));
+if (require.main === module) {
+  http.createServer(handler).listen(PORT, () => console.log(`StakeKing backend listening on ${PORT}`));
+}
+
+module.exports = handler;

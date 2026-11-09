@@ -262,3 +262,40 @@ Field maps (backend -> UI row):
   and a shared ADAPTER_SERVICE_KEY on the frontend host), then the
   live end-to-end pass. First the repo push, which needs Prince to
   create the empty repo (see Build status, first bullet).
+
+## Deployment as built (2026-11-09, Vercel via the custom token helper)
+
+- Frontend: deployed as a PREBUILT Nitro vercel-preset build. The
+  upload must use the canonical Build Output layout (files under
+  `.vercel/output/...`); uploading the output contents at the root
+  makes Vercel run "vite build" instead and fail. Project
+  `stakeking` (prj_RF48C2DaPbOmA4SPhrXTIachas9N), live at
+  https://stakeking-heis-fyns-projects.vercel.app, ssoProtection off.
+  Build env: SUPABASE_URL + VITE_SUPABASE_URL =
+  https://stakeking-api.vercel.app, publishable key `stakeking-anon`,
+  SUPABASE_SERVICE_ROLE_KEY = the backend's ADAPTER_SERVICE_KEY.
+  Verified in a real browser 2026-11-09: the full UI renders (the
+  earlier "This page didn't load" error screen is gone); match lists
+  are empty until DATABASE_URL lands on the backend.
+- Backend: project `stakeking-api` (prj_Mg5Kk5g6zHZvi9ETYETayHRtEhYA),
+  live at https://stakeking-api.vercel.app. The Hobby plan caps a
+  deployment at 12 serverless functions, so the backend deploys as
+  ONE function: staging copy (~/workspace/stakeking-backend-deploy)
+  renames backend/api/ to engine/, patches server.js requires, adds
+  a single api/index.js that restores the original path from the
+  __p query param (set by vercel.json rewrites for /auth/v1/*,
+  /rest/v1/*, /api/*) and delegates to the dispatcher server.js now
+  exports. bodyParser is off on that function; handlers read bodies
+  via _lib.readBody's stream fallback, and the ShinobiPay webhook
+  gets its raw body. server.js still listens directly on Railway
+  (require.main check). Env set so far: SESSION_SECRET,
+  ADAPTER_SERVICE_KEY (generated, stored only in Vercel). Still
+  needed from Prince: DATABASE_URL (Neon project
+  dawn-waterfall-85938372), SHINOBIPAY_SECRET_KEY,
+  SHINOBIPAY_WEBHOOK_SECRET, API_FOOTBALL_KEY.
+- Winning cup: Prince ordered the site name crafted on the trophy;
+  src/assets/result-trophy-clear.png is now the engraved "StakeKing"
+  version (also saved at ~/workspace/your_files/
+  stakeking-trophy-engraved.png) and is live in the current build.
+  The PNG is binary, so it still cannot ride the GitHub connector
+  push; the repo copy lands when Prince uploads it via GitHub.
