@@ -1,0 +1,226 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-display: "Barlow Condensed", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-gold: var(--gold);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-live: var(--live);
+  --color-surface: var(--surface);
+  --color-paper: var(--paper);
+  --color-paper-foreground: var(--paper-foreground);
+  --color-paper-muted: var(--paper-muted);
+  --color-paper-border: var(--paper-border);
+  --color-odds-soft: var(--odds-soft);
+  --color-odds-soft-foreground: var(--odds-soft-foreground);
+  --color-brand-bar: var(--brand-bar);
+  --color-brand-ink: var(--brand-ink);
+  --color-history-bar: var(--history-bar);
+  --color-history-tab: var(--history-tab);
+  --color-result-panel: var(--result-panel);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  --radius: 0.375rem;
+  --background: oklch(0.958 0.003 264.5);
+  --foreground: oklch(0.139 0.005 262.8);
+  --surface: oklch(0.139 0.005 262.8);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.139 0.005 262.8);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.139 0.005 262.8);
+  --primary: oklch(0.563 0.150 151.5);
+  --primary-foreground: oklch(1 0 0);
+  --secondary: oklch(0.93 0.004 264.5);
+  --secondary-foreground: oklch(0.139 0.005 262.8);
+  --muted: oklch(0.93 0.004 264.5);
+  --muted-foreground: oklch(0.5 0.01 260);
+  --accent: oklch(0.93 0.004 264.5);
+  --accent-foreground: oklch(0.139 0.005 262.8);
+  --gold: oklch(0.850 0.174 86.6);
+  --gold-foreground: oklch(0.139 0.005 262.8);
+  --live: oklch(0.581 0.235 28.0);
+  --paper: oklch(1 0 0);
+  --paper-foreground: oklch(0.139 0.005 262.8);
+  --paper-muted: oklch(0.5 0.01 260);
+  --paper-border: oklch(0.958 0.003 264.5);
+  --odds-soft: oklch(0.840 0.074 150.7);
+  --odds-soft-foreground: oklch(0.428 0.112 152.4);
+  --brand-bar: oklch(0.581 0.235 28.0);
+  --brand-ink: oklch(0.205 0.008 264.5);
+  --history-bar: oklch(0.325 0.015 264.5);
+  --history-tab: oklch(0.415 0.015 264.5);
+  --result-panel: oklch(0 0 0);
+  --destructive: oklch(0.581 0.235 28.0);
+  --destructive-foreground: oklch(1 0 0);
+  --border: oklch(0.9 0.004 264.5);
+  --input: oklch(0.88 0.004 264.5);
+  --ring: oklch(0.563 0.150 151.5);
+  --chart-1: oklch(0.563 0.150 151.5);
+  --chart-2: oklch(0.850 0.174 86.6);
+  --chart-3: oklch(0.6 0.12 240);
+  --chart-4: oklch(0.581 0.235 28.0);
+  --chart-5: oklch(0.65 0.15 320);
+  --sidebar: oklch(0.139 0.005 262.8);
+  --sidebar-foreground: oklch(1 0 0);
+  --sidebar-primary: oklch(0.563 0.150 151.5);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.308 0.012 258.4);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.32 0.012 260);
+  --sidebar-ring: oklch(0.563 0.150 151.5);
+
+  --gradient-brand: linear-gradient(135deg, oklch(0.581 0.235 28.0), oklch(0.5 0.22 25));
+  --gradient-hero: linear-gradient(180deg, oklch(0.581 0.235 28.0 / 0.25), transparent 50%);
+  --shadow-glow: 0 8px 24px -8px oklch(0.139 0.005 262.8 / 0.6);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+  html {
+    color-scheme: dark;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+    letter-spacing: 0.01em;
+  }
+}
+
+@utility bg-brand-gradient {
+  background-image: var(--gradient-brand);
+}
+@utility bg-hero {
+  background-image: var(--gradient-hero);
+}
+@utility text-brand-gradient {
+  background-image: var(--gradient-brand);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@utility shadow-glow {
+  box-shadow: var(--shadow-glow);
+}
+@utility live-dot {
+  &::before {
+    content: "";
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: var(--live);
+    margin-right: 0.35rem;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+}
+
+/* Dark panels (live section) keep the charcoal look inside the light theme */
+.theme-dark {
+  --background: oklch(0.213 0.008 264.4);
+  --foreground: oklch(1 0 0);
+  --card: oklch(0.264 0.012 264.3);
+  --card-foreground: oklch(1 0 0);
+  --secondary: oklch(0.308 0.012 258.4);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.308 0.012 258.4);
+  --muted-foreground: oklch(0.72 0.01 260);
+  --accent: oklch(0.308 0.012 258.4);
+  --accent-foreground: oklch(1 0 0);
+  --border: oklch(0.32 0.012 260);
+}
+
+.bet-history-page, .ticket-details-page {
+  font-family: Arial, ui-sans-serif, sans-serif;
+  letter-spacing: 0;
+}
+
+.result-caption {
+  text-shadow: 0 2px 4px var(--brand-ink), 0 0 12px var(--brand-ink);
+}
+
+.match-markets-page {
+  font-family: Arial, ui-sans-serif, sans-serif;
+  letter-spacing: 0;
+}
+.match-markets-page h1, .match-markets-page h2, .match-markets-page h3 {
+  font-family: inherit;
+  letter-spacing: 0;
+}
+
+/* Scoped to actively playing match details; pre-match and other pages stay light. */
+.live-match-page {
+  --paper: oklch(0.2235 0.0139 272.3);
+  --paper-foreground: oklch(1 0 0);
+  --paper-muted: oklch(0.7 0.012 265);
+  --paper-border: oklch(0.335 0.014 265);
+  --odds-soft: oklch(0.335 0.014 265);
+  --odds-soft-foreground: oklch(0.732 0.19 149);
+}
+.live-match-page .live-odds {
+  background-color: var(--paper-border);
+  color: var(--odds-soft-foreground);
+}
+.live-match-page .live-odds[aria-pressed="true"] {
+  background-color: var(--primary);
+  color: var(--primary-foreground);
+}
+.live-match-page .live-odds:disabled {
+  background-color: var(--paper-border);
+  color: var(--paper-muted);
+  opacity: 0.45;
+}
+
+/* Reference scoreboard: dark team bars, bright green score cells. */
+.live-scoreboard { --score-cell: oklch(0.77 0.15 148); --score-ink: oklch(0.3 0.01 265); --team-bar: oklch(0.32 0.01 265); }
+.live-scoreboard .team-bar { background-color: var(--team-bar); color: var(--paper-foreground); }
+.live-scoreboard .score-cell { background-color: var(--score-cell); color: var(--score-ink); }
+.live-scoreboard .score-clock { color: var(--score-cell); }

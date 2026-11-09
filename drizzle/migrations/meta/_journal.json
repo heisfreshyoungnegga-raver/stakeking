@@ -1,0 +1,132 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1794013853801,
+      "tag": "0000_betting_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794015296242,
+      "tag": "0001_markets_wagering_withdrawals",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794016378736,
+      "tag": "0002_booking_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794017001015,
+      "tag": "0003_cashout_bet",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794017782942,
+      "tag": "0004_partial_cashout_engine",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794021494556,
+      "tag": "0005_multiple_bet_bonus",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794024864862,
+      "tag": "0006_shinobipay_encrypted_admin_credentials",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794025876196,
+      "tag": "0007_retire_demo_deposits",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794027224829,
+      "tag": "0008_shinobipay_verified_payment_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794049275041,
+      "tag": "0009_shinobipay_attempt_binding_and_verification",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794063508757,
+      "tag": "0010_shinobipay_exactly_once_cash_credit",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794078180176,
+      "tag": "0011_migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794078386637,
+      "tag": "0012_migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794078896208,
+      "tag": "0013_migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1794080134947,
+      "tag": "0014_migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1794080390233,
+      "tag": "0015_migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794152752879,
+      "tag": "0016_remove_signup_demo_credits",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794166609641,
+      "tag": "0017_user_feedback",
+      "breakpoints": true
+    }
+  ]
+}
