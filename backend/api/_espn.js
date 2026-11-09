@@ -26,6 +26,40 @@ const LEAGUES = {
   'uefa.nations': 'UEFA Nations League',
   'concacaf.nations.league': 'CONCACAF Nations League',
   'fifa.friendly': 'International Friendlies',
+  // Wider net (added 2026-11-09, Prince: 'no live games'): second
+  // divisions, smaller European leagues, the Americas, Asia, Africa
+  // and the women's game — on any given day something here is live,
+  // including through international breaks. Every slug verified to
+  // answer 200 on ESPN before being added.
+  'eng.2': 'England Championship',
+  'eng.3': 'England League One',
+  'eng.trophy': 'EFL Trophy',
+  'esp.2': 'Spain Segunda División',
+  'ger.2': 'Germany 2. Bundesliga',
+  'ita.2': 'Italy Serie B',
+  'fra.2': 'France Ligue 2',
+  'ned.2': 'Netherlands Eerste Divisie',
+  'sco.1': 'Scotland Premiership',
+  'tur.1': 'Türkiye Süper Lig',
+  'gre.1': 'Greece Super League',
+  'bel.1': 'Belgium Pro League',
+  'aut.1': 'Austria Bundesliga',
+  'sui.1': 'Switzerland Super League',
+  'den.1': 'Denmark Superliga',
+  'nor.1': 'Norway Eliteserien',
+  'bra.1': 'Brazil Brasileirão',
+  'arg.1': 'Argentina Liga Profesional',
+  'mex.1': 'Mexico Liga MX',
+  'chi.1': 'Chile Primera División',
+  'col.1': 'Colombia Primera A',
+  'aus.1': 'Australia A-League',
+  'jpn.1': 'Japan J1 League',
+  'rsa.1': 'South Africa Premiership',
+  'uefa.wchampions': "UEFA Women's Champions League",
+  'usa.nwsl': 'NWSL',
+  'caf.champions': 'CAF Champions League',
+  'afc.champions': 'AFC Champions League',
+  'uefa.worldq': 'World Cup Qualifiers (UEFA)',
 };
 
 function americanToDecimal(v) {
