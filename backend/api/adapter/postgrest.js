@@ -156,8 +156,8 @@ const fetchers = {
     const metas = ids.length ? await sql('select user_id, meta from adapter_user_meta where user_id = any($1)', [ids]) : [];
     const counts = ids.length ? await sql(
       `select user_id, count(*)::int as n from wallet_transactions where kind = 'deposit' and status = 'completed' and user_id = any($1) group by user_id`, [ids]) : [];
-    const settings = await getSettings().catch(() => ({}));
-    const required = Number((settings && settings.withdraw_deposits_required) || 0);
+    const settings = await getSettings(['withdraw_deposits_required']).catch(() => ({}));
+    const required = Number((settings && settings.withdraw_deposits_required) || 2);
     const metaBy = Object.fromEntries(metas.map((m) => [m.user_id, m.meta || {}]));
     const countBy = Object.fromEntries(counts.map((r) => [r.user_id, r.n]));
     return users.map((u) => R.profileRow(u, metaBy[u.id], { progress: countBy[u.id] || 0, required }));
@@ -216,7 +216,7 @@ const fetchers = {
   },
   async shinobipay_deposits(c) {
     if (!c.user && !c.service) return [];
-    const settings = await getSettings().catch(() => ({}));
+    const settings = await getSettings(['shinobipay_mode']).catch(() => ({}));
     const mode = (settings && settings.shinobipay_mode) || 'live';
     const real = isAdmin(c)
       ? await sql("select * from wallet_transactions where kind = 'deposit' and method in ('shinobipay', 'momo') order by created_at desc limit 500")
