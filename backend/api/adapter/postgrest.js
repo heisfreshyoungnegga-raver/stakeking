@@ -1,4 +1,7 @@
 const { sql, readBody, send, guard, getSettings, ensureMatchColumns, ensureBetColumns, keyFor } = require('../_lib');
+const { maybeRefreshLive } = require('../_espn');
+const { afEnabled, maybeRefreshAf } = require('../_apifootball');
+const { maybeRefreshOdds } = require('../_oddsapi');
 const { caller, isAdmin } = require('./caller');
 const { toEnginePick } = require('./markets');
 const R = require('./rows');
@@ -136,7 +139,24 @@ function project(rows, selectParam) {
 const fetchers = {
   async matches() {
     await ensureMatchColumns();
+    // Board reads drive the feeds: every refresh is internally
+    // gated (ESPN 120s, API-Football 120s/600s, Odds API 20min), so
+    // polling traffic keeps fixtures, live scores and prices fresh
+    // without hammering any provider. Failures never break the list.
+    await maybeRefreshLive().catch(() => {});
+    if (afEnabled()) await maybeRefreshAf().catch(() => {});
+    await maybeRefreshOdds().catch(() => {});
     const rows = await sql('select * from matches order by starts_at asc limit 2000');
+    // Feed sweep stamps feed the rows' freshness (see rows.js).
+    let feedFresh = null;
+    try {
+      const gates = await sql("select key, value from operator_settings where key in ('espn_refresh_at','espn_fixtures_at','af_refresh_at','af_fixtures_at')");
+      const g = Object.fromEntries(gates.map((r) => [r.key, Number(r.value) || 0]));
+      feedFresh = {
+        espn: Math.max(g.espn_refresh_at || 0, g.espn_fixtures_at || 0) || null,
+        af: Math.max(g.af_refresh_at || 0, g.af_fixtures_at || 0) || null,
+      };
+    } catch (e) { /* freshness falls back to per-row stamps */ }
     // Every engine match is football; the UI groups by category_id,
     // so stamp the Football category's id (looked up, never assumed).
     let footballId = null;
@@ -144,7 +164,7 @@ const fetchers = {
       const cats = await sql("select id from sports_categories where slug = 'football' limit 1");
       if (cats.length) footballId = cats[0].id;
     } catch (e) { /* categories table is adapter-side; absence is fine */ }
-    return rows.map((m) => R.matchRow(m, footballId));
+    return rows.map((m) => R.matchRow(m, footballId, feedFresh));
   },
   async profiles(c) {
     let users;

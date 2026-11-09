@@ -28,8 +28,24 @@ function sourceOf(ref) {
   return 'custom';
 }
 
-function matchRow(m, footballCategoryId) {
+// The UI shows prices only while odds_updated_at is under 30
+// minutes old (its hasOdds rule). A provider-priced row carries its
+// own stamp (odds_attempt_at). A feed-derived row (ESPN model book)
+// is re-confirmed every time its feed sweeps, so its freshness is
+// the feed's last sweep time, passed in as feedFresh — never older
+// than the row's own creation.
+function freshStamp(m, feedFresh) {
+  if (m.odds_attempt_at) return iso(m.odds_attempt_at);
+  const src = sourceOf(m.external_ref);
+  const gate = feedFresh ? (src === 'espn' ? feedFresh.espn : src === 'api-football' ? feedFresh.af : null) : null;
+  const created = m.created_at ? new Date(m.created_at).getTime() : 0;
+  const t = Math.max(gate || 0, created || 0);
+  return t ? new Date(t).toISOString() : null;
+}
+
+function matchRow(m, footballCategoryId, feedFresh) {
   const odds = m.odds || {};
+  const fresh = freshStamp(m, feedFresh);
   return {
     id: m.id,
     league: m.league,
@@ -52,7 +68,7 @@ function matchRow(m, footballCategoryId) {
     odds_available: !!(Number(odds.o1) > 1 && Number(odds.ox) > 1 && Number(odds.o2) > 1),
     odds_bookmaker: m.odds_full ? 'Bet365' : null,
     odds_event_id: null,
-    odds_updated_at: iso(m.odds_attempt_at) || iso(m.created_at),
+    odds_updated_at: fresh,
     markets: toUiMarkets(m),
     external_id: extId(m.external_ref),
     competition_code: FD_CODES[m.league] || null,
@@ -62,7 +78,7 @@ function matchRow(m, footballCategoryId) {
     second_half_at: null,
     visible: true,
     created_at: iso(m.created_at),
-    synced_at: iso(m.odds_attempt_at) || iso(m.created_at),
+    synced_at: fresh,
   };
 }
 

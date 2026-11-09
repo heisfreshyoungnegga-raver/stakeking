@@ -20,7 +20,9 @@ const { sql } = require('./_lib');
 const API_BASE = 'https://api.the-odds-api.com/v4';
 const REGION = 'eu';
 const MARKETS = 'h2h,totals';
-const REFRESH_MS = Number(process.env.ODDS_API_REFRESH_MS || 30 * 60000);
+// 20 minutes: the UI hides prices whose odds_updated_at is 30+
+// minutes old, so a fresh provider confirmation must land first.
+const REFRESH_MS = Number(process.env.ODDS_API_REFRESH_MS || 20 * 60000);
 const CREDIT_FLOOR = 40;
 const BOOKMAKER_PRIORITY = ['pinnacle', 'onexbet', 'betsson', 'nordicbet', 'matchbook', 'unibet_se', 'unibet_uk', 'williamhill', 'betfair_ex_eu', 'tipico_de'];
 
@@ -60,9 +62,29 @@ const LEAGUE_TO_SPORT = {
   'greek super league': 'soccer_greece_super_league',
   'norwegian eliteserien': 'soccer_norway_eliteserien',
   'japanese j league': 'soccer_japan_j_league',
+  'uefa womens champions league': 'soccer_uefa_champs_league_women',
+  'uefa women s champions league': 'soccer_uefa_champs_league_women',
+  'south korean k league 1': 'soccer_korea_kleague1',
+  'k league 1': 'soccer_korea_kleague1',
+  'saudi pro league': 'soccer_saudi_arabia_pro_league',
+  'saudi arabian pro league': 'soccer_saudi_arabia_pro_league',
+  'swedish allsvenskan': 'soccer_sweden_allsvenskan',
+  'polish ekstraklasa': 'soccer_poland_ekstraklasa',
+  'finnish veikkausliiga': 'soccer_finland_veikkausliiga',
+  'chinese super league': 'soccer_china_superleague',
+  'brazilian serie b': 'soccer_brazil_serie_b',
+  'irish premier division': 'soccer_league_of_ireland',
+  'league of ireland premier division': 'soccer_league_of_ireland',
+  'conmebol libertadores': 'soccer_conmebol_copa_libertadores',
+  'conmebol copa libertadores': 'soccer_conmebol_copa_libertadores',
+  'conmebol sudamericana': 'soccer_conmebol_copa_sudamericana',
+  'conmebol copa sudamericana': 'soccer_conmebol_copa_sudamericana',
+  'concacaf gold cup': 'soccer_concacaf_gold_cup',
+  'africa cup of nations': 'soccer_africa_cup_of_nations',
+  'german 3 liga': 'soccer_germany_liga3',
 };
 function sportKeyForLeague(league) {
-  const k = String(league || '').trim().toLowerCase();
+  const k = String(league || '').trim().toLowerCase().replace(/['’]/g, '');
   if (LEAGUE_TO_SPORT[k]) return LEAGUE_TO_SPORT[k];
   if (k.includes('world cup qualifying') && k.includes('uefa')) return 'soccer_fifa_world_cup_qualifiers_europe';
   if (k.includes('world cup qualifying') && (k.includes('conmebol') || k.includes('south america'))) return 'soccer_fifa_world_cup_qualifiers_south_america';
@@ -94,13 +116,23 @@ const NAME_ALIAS = {
   'olympiacos': 'olympiakos', 'olympiakos piraeus': 'olympiakos',
   'stade rennais': 'rennes', 'rennais': 'rennes',
 };
+// Reserve sides are spelled two ways across feeds: ESPN writes
+// "Real Sociedad II" where bookmakers write "Real Sociedad B".
+// Fold the trailing roman suffix so both sides land on one form.
+function foldReserveSuffix(n) {
+  const t = n.split(' ');
+  const last = t[t.length - 1];
+  if (last === 'ii') t[t.length - 1] = 'b';
+  else if (last === 'iii') t[t.length - 1] = 'c';
+  return t.join(' ');
+}
 function normalizeName(s) {
   let n = String(s || '').toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9 ]/g, ' ')
     .replace(/\s+/g, ' ').trim();
   if (NAME_ALIAS[n]) n = NAME_ALIAS[n];
-  return n;
+  return foldReserveSuffix(n);
 }
 function nameTokens(s) {
   return normalizeName(s).split(' ').filter((t) => t && !TEAM_FILLER.has(t));
@@ -115,7 +147,12 @@ function lev(a, b) {
   return d[a.length][b.length];
 }
 function tokenMatch(a, b) {
-  return a === b || a.startsWith(b) || b.startsWith(a) || lev(a, b) <= 1;
+  if (a === b) return true;
+  // Prefix matching needs a real stem: without this floor the
+  // folded reserve token 'b' would "match" any B-team (Betis,
+  // Barcelona) and stamp the wrong book on a fixture.
+  if (Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a))) return true;
+  return lev(a, b) <= 1;
 }
 function teamsMatch(a, b) {
   const ta = nameTokens(a), tb = nameTokens(b);
@@ -194,9 +231,11 @@ async function syncOddsApi() {
   const apiKey = process.env.ODDS_API_KEY;
   if (!apiKey) return 0;
   if (lastRemaining != null && lastRemaining < CREDIT_FLOOR) return 0;
+  // Upcoming AND live: the bulk response already carries in-play
+  // events at no extra credit cost, so price the live board too.
   const rows = await sql(
     `select id, league, home_team, away_team, starts_at, odds from matches
-     where status = 'upcoming' and starts_at > now() - interval '3 hours' and starts_at < now() + interval '7 days'
+     where status in ('upcoming', 'live') and starts_at > now() - interval '3 hours' and starts_at < now() + interval '7 days'
      order by starts_at asc limit 2000`
   );
   const bySport = new Map();
@@ -241,10 +280,13 @@ async function claimGate(key, ms) {
   );
   return claimed.length > 0;
 }
+// Returns how many fixtures were priced (0 when gated or keyless),
+// so RPC callers can report truthfully without burning quota: the
+// gate is the only path to the provider.
 async function maybeRefreshOdds() {
-  if (!process.env.ODDS_API_KEY) return false;
-  if (await claimGate('oddsapi_refresh_at', REFRESH_MS)) { await syncOddsApi(); return true; }
-  return false;
+  if (!process.env.ODDS_API_KEY) return 0;
+  if (await claimGate('oddsapi_refresh_at', REFRESH_MS)) return syncOddsApi();
+  return 0;
 }
 
 module.exports = { syncOddsApi, maybeRefreshOdds, sportKeyForLeague, normalizeName, teamsMatch, bookToOdds, pickBookOdds };
