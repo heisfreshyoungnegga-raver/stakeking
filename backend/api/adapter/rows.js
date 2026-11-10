@@ -106,13 +106,22 @@ function userRoleRow(user) {
 
 function selectionUi(sel, match) {
   const ui = toUiPick(sel.market, sel.pick);
+  const label = match ? match.home_team + ' vs ' + match.away_team : '';
   return {
     matchId: sel.match_id,
-    label: match ? match.home_team + ' vs ' + match.away_team : '',
+    label,
     market: ui.market,
     option: ui.option,
     optionLabel: ui.optionLabel,
     odds: Number(sel.odds || 0),
+    // Stored-bet shape: the ticket page, My Bets, the win dialog and
+    // the admin bet list all read selections as { match_id, match,
+    // market, pick, odds } (the shape the original place_bet stored).
+    // Without these three fields the legs render with no team names,
+    // Game ID "—" and a blank pick (Onelord's report, 2026-11-10).
+    match_id: sel.match_id,
+    match: label,
+    pick: ui.option,
     // Extra context the ticket page renders when present.
     home_team: match ? match.home_team : undefined,
     away_team: match ? match.away_team : undefined,
