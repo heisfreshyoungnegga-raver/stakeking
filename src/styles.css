@@ -219,6 +219,35 @@
   opacity: 0.45;
 }
 
+/* Win celebration: transparent cup floats over a soft gold glow while
+   particles keep popping out around it. */
+@keyframes win-cup-float {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-10px) rotate(1deg); }
+}
+@keyframes win-glow-pulse {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.08); }
+}
+@keyframes win-particle-pop {
+  0% { transform: translate(-50%, -50%) rotate(0deg) scale(0); opacity: 0; }
+  12% { opacity: 1; transform: translate(calc(-50% + var(--tx) * 0.35), calc(-50% + var(--ty) * 0.35)) rotate(90deg) scale(1); }
+  70% { opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) rotate(260deg) scale(0.35); opacity: 0; }
+}
+.win-cup-float { animation: win-cup-float 3.4s ease-in-out infinite; }
+.win-glow { animation: win-glow-pulse 3.4s ease-in-out infinite; }
+.win-particle {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  border-radius: 9999px;
+  pointer-events: none;
+  opacity: 0;
+  animation: win-particle-pop 2.6s ease-out infinite;
+}
+.win-particle.diamond { border-radius: 2px; }
+
 /* Reference scoreboard: dark team bars, bright green score cells. */
 .live-scoreboard { --score-cell: oklch(0.77 0.15 148); --score-ink: oklch(0.3 0.01 265); --team-bar: oklch(0.32 0.01 265); }
 .live-scoreboard .team-bar { background-color: var(--team-bar); color: var(--paper-foreground); }

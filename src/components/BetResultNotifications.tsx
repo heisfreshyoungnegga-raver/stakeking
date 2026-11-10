@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Crown, Trophy } from "lucide-react";
@@ -10,6 +10,24 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogPortal } from "@/components/ui/dialog";
 import trophy from "@/assets/result-trophy-clear.png";
 import { shareBookingImage } from "@/lib/booking-image";
+
+const GOLD = "#f5c542";
+const WIN_PARTICLES: { tx: string; ty: string; size: number; color: string; delay: string; diamond?: boolean }[] = [
+  { tx: "-168px", ty: "-196px", size: 9, color: GOLD, delay: "0s" },
+  { tx: "150px", ty: "-210px", size: 7, color: "#ffffff", delay: "0.35s", diamond: true },
+  { tx: "-205px", ty: "-60px", size: 7, color: "#ffd970", delay: "0.7s" },
+  { tx: "198px", ty: "-40px", size: 9, color: GOLD, delay: "1.05s", diamond: true },
+  { tx: "-120px", ty: "-248px", size: 6, color: "#ffffff", delay: "1.4s" },
+  { tx: "96px", ty: "-256px", size: 8, color: "#ffd970", delay: "1.75s", diamond: true },
+  { tx: "-228px", ty: "66px", size: 6, color: GOLD, delay: "0.5s", diamond: true },
+  { tx: "222px", ty: "84px", size: 7, color: "#ffffff", delay: "0.9s" },
+  { tx: "-88px", ty: "196px", size: 8, color: "#ffd970", delay: "1.25s" },
+  { tx: "118px", ty: "188px", size: 6, color: GOLD, delay: "1.6s", diamond: true },
+  { tx: "-186px", ty: "-140px", size: 5, color: "#ffffff", delay: "1.95s" },
+  { tx: "176px", ty: "-150px", size: 5, color: GOLD, delay: "2.2s" },
+  { tx: "-40px", ty: "-272px", size: 7, color: GOLD, delay: "0.2s", diamond: true },
+  { tx: "30px", ty: "224px", size: 7, color: "#ffffff", delay: "2.45s" },
+];
 
 const ResultContext = createContext<(result: BetResult) => void>(() => {});
 export const useBetResultNotification = () => useContext(ResultContext);
@@ -91,7 +109,15 @@ export function BetResultNotifications({ children }: { children: ReactNode }) {
         <div className="mx-auto flex w-full max-w-lg flex-col items-center text-center">
           <DialogTitle className="font-sans text-4xl font-bold">{result.kind === "won" ? "YOU WON" : "CASHOUT SUCCESSFUL"}</DialogTitle>
           <DialogDescription className="result-caption mt-3 text-2xl font-bold text-foreground">{CURRENCY} {fmt(result.amount)}</DialogDescription>
-          <img src={trophy} alt="Gold trophy cup" width={768} height={1024} className="mx-auto my-5 h-[min(58dvh,620px)] w-full object-contain motion-safe:animate-in motion-safe:zoom-in-90" />
+          <div className="relative mx-auto my-5 w-full motion-safe:animate-in motion-safe:zoom-in-90">
+            <div aria-hidden className="win-glow absolute left-1/2 top-1/2 h-[70%] w-[62%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(245,197,66,0.5),rgba(245,197,66,0.12)_55%,transparent_75%)] blur-xl" />
+            <img src={trophy} alt="Gold trophy cup" width={768} height={987} className="win-cup-float relative mx-auto h-[min(58dvh,620px)] w-full object-contain drop-shadow-[0_18px_28px_rgba(0,0,0,0.45)]" />
+            <div aria-hidden className="pointer-events-none absolute inset-0 overflow-visible">
+              {WIN_PARTICLES.map((p, i) => (
+                <span key={i} className={`win-particle${p.diamond ? " diamond" : ""}`} style={{ "--tx": p.tx, "--ty": p.ty, width: p.size, height: p.size, backgroundColor: p.color, animationDelay: p.delay } as CSSProperties} />
+              ))}
+            </div>
+          </div>
           <div className="grid w-full grid-cols-2 gap-2">
             <Button variant="outline" asChild className="h-12 rounded-sm border-2 border-primary bg-transparent text-primary hover:bg-primary/10"><Link to="/ticket/$betId" params={{ betId: result.betId }} onClick={dismiss}>Details</Link></Button>
             <Button onClick={share} className="h-11 rounded-sm"><Trophy className="h-4 w-4" /> Show Off</Button>
