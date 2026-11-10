@@ -64,10 +64,19 @@ function uiMatchToEngine(row) {
     out.odds = odds;
     // Correct Score and the rest of the full book come from the
     // derived odds_full (Prince, 2026-11-10: admin-added matches must
-    // carry Correct Score like feed matches do). An explicit book
-    // from a market editor wins; otherwise derive from the 1X2.
-    if (fromMarkets.odds_full.length) out.odds_full = fromMarkets.odds_full;
-    else {
+    // carry Correct Score like feed matches do). Explicit markets
+    // from an editor (the Add Match form's Correct Score grid,
+    // Prince 2026-11-10) override the derived book PER MARKET — the
+    // rest of the derived book stays, so setting one market never
+    // wipes the other ~30.
+    if (fromMarkets.odds_full.length) {
+      const derived = fullBookFromOdds(odds);
+      if (!derived.length) out.odds_full = fromMarkets.odds_full;
+      else {
+        const explicitNames = new Set(fromMarkets.odds_full.map((mk) => mk.name));
+        out.odds_full = [...derived.filter((mk) => !explicitNames.has(mk.name)), ...fromMarkets.odds_full];
+      }
+    } else {
       const book = fullBookFromOdds(odds);
       out.odds_full = book.length ? book : null;
     }

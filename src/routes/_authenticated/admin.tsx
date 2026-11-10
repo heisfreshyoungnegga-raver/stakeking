@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -182,6 +182,36 @@ export function MyTeam() {
   );
 }
 
+// Correct Score grid for the Add Match form (Prince, 2026-11-10: the
+// super admin sets these prices himself; players see exactly these).
+// Auto prices mirror the engine's fullBookFromOdds Correct Score
+// pricer — same Poisson split of the 1X2 line (mu = 2.7, 5% margin) —
+// so the prefill matches what the server would derive untouched.
+const CS_RANGE = [0, 1, 2, 3, 4, 5];
+function csAutoPrices(o1: number, ox: number, o2: number): Record<string, number> {
+  if (!(o1 > 1 && ox > 1 && o2 > 1)) return {};
+  const r0 = 1 / o1, r2 = 1 / o2;
+  const margin = r0 + 1 / ox + r2;
+  const pH = r0 / margin, pA = r2 / margin;
+  const mu = 2.7;
+  const muH = (mu * (pH / (pH + pA || 1))) || mu / 2;
+  const muA = Math.max(mu - muH, 0.15);
+  const pmf = (lambda: number) => {
+    const arr: number[] = [Math.exp(-lambda)];
+    for (let k = 1; k <= 12; k++) arr.push(((arr[k - 1] as number) * lambda) / k);
+    return arr;
+  };
+  const PH = pmf(muH), PA = pmf(muA);
+  const out: Record<string, number> = {};
+  for (let h = 0; h <= 5; h++) for (let a = 0; a <= 5; a++) {
+    const p = (PH[h] as number) * (PA[a] as number);
+    if (!(p >= 0.002)) continue;
+    const v = Math.round(((1 / p) / (margin > 1 ? 1.05 : 1)) * 100) / 100;
+    if (v >= 1.02 && v <= 500) out[h + ":" + a] = v;
+  }
+  return out;
+}
+
 function Matches() {
   const qc = useQueryClient();
   const { data: cats } = useQuery(categoriesQuery);
@@ -198,6 +228,32 @@ function Matches() {
   const [noGoals, setNoGoals] = useState(false);
   const [htStop, setHtStop] = useState("");
   const [ftStop, setFtStop] = useState("");
+  // Correct Score prices: auto-filled from the 1X2 line, any cell the
+  // admin types over becomes his own price (tracked in csEdited and
+  // never overwritten by later 1X2 edits).
+  const [cs, setCs] = useState<Record<string, string>>({});
+  const [csEdited, setCsEdited] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const auto = csAutoPrices(Number(f.odds_home), Number(f.odds_draw), Number(f.odds_away));
+    setCs((prev) => {
+      const next: Record<string, string> = {};
+      for (const [k, v] of Object.entries(auto)) next[k] = String(v);
+      csEdited.forEach((k) => { const pv = prev[k]; if (pv !== undefined) next[k] = pv; });
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.odds_home, f.odds_draw, f.odds_away]);
+  function setCsCell(key: string, val: string) {
+    setCs((prev) => ({ ...prev, [key]: val }));
+    setCsEdited((prev) => new Set(prev).add(key));
+  }
+  function resetCs() {
+    setCsEdited(new Set());
+    const auto = csAutoPrices(Number(f.odds_home), Number(f.odds_draw), Number(f.odds_away));
+    const next: Record<string, string> = {};
+    for (const [k, v] of Object.entries(auto)) next[k] = String(v);
+    setCs(next);
+  }
   const refresh = () => { qc.invalidateQueries({ queryKey: ["admin"] }); qc.invalidateQueries({ queryKey: ["matches"] }); };
 
   function addGoal(side: "home" | "away") {
@@ -210,16 +266,23 @@ function Matches() {
   async function add() {
     if (!f.home_team || !f.away_team || !f.category_id) { toast.error("Category and teams required"); return; }
     if (!goals.length && !noGoals) { toast.error("Goal timing is required — add the goals, or tick No goals for a 0-0 match"); return; }
+    const csObj: Record<string, number> = {};
+    for (const [k, v] of Object.entries(cs)) {
+      const n = Number(v);
+      if (n > 1) csObj[k] = Math.round(n * 100) / 100;
+    }
     const payload = {
       ...f, start_time: f.start_time ? new Date(f.start_time).toISOString() : new Date().toISOString(),
       odds_home: Number(f.odds_home), odds_draw: Number(f.odds_draw), odds_away: Number(f.odds_away),
       goal_events: goals, ht_stoppage: Number(htStop) || 0, ft_stoppage: Number(ftStop) || 0,
+      ...(Object.keys(csObj).length ? { markets: { "Correct Score": csObj } } : {}),
     };
-    // goal_events / stoppages are adapter-level fields the generated
-    // client types do not know; the cast keeps them on the payload.
+    // goal_events / stoppages / markets are adapter-level fields the
+    // generated client types do not know; the cast keeps them on the
+    // payload.
     const { error } = await supabase.from("matches").insert(payload as TablesInsert<"matches">);
     if (err(error)) return;
-    setF(blank); setGoals([]); setNoGoals(false); setHtStop(""); setFtStop(""); refresh(); toast.success("Match added");
+    setF(blank); setGoals([]); setNoGoals(false); setHtStop(""); setFtStop(""); setCs({}); setCsEdited(new Set()); refresh(); toast.success("Match added");
   }
   async function upd(id: string, patch: TablesUpdate<"matches">) {
     if (err((await supabase.from("matches").update(patch).eq("id", id)).error)) return;
@@ -250,7 +313,7 @@ function Matches() {
             <Input aria-label="Odds 2" value={f.odds_away} onChange={(e) => setF({ ...f, odds_away: e.target.value })} />
           </div>
           <div className="space-y-2 sm:col-span-2">
-            <p className="text-sm font-semibold">Goal timing <span className="text-xs font-normal text-muted-foreground">— required. The match clock, live score and final score all run from this script, and Correct Score plus the full market book are priced from the 1 X 2 odds automatically.</span></p>
+            <p className="text-sm font-semibold">Goal timing <span className="text-xs font-normal text-muted-foreground">— required. The match clock, live score and final score all run from this script, and the full market book is priced from the 1 X 2 odds automatically. Correct Score prices are set in the section below.</span></p>
             <div className="flex flex-wrap items-center gap-2">
               <Input className="w-24" placeholder="Minute" inputMode="numeric" value={gMin} onChange={(e) => setGMin(e.target.value.replace(/[^\d]/g, ""))} aria-label="Goal minute" />
               <Button size="sm" variant="secondary" onClick={() => addGoal("home")}>+ Home goal</Button>
@@ -272,6 +335,44 @@ function Matches() {
               <Input className="w-40" placeholder="1st-half stoppage (min)" inputMode="numeric" value={htStop} onChange={(e) => setHtStop(e.target.value.replace(/[^\d]/g, ""))} aria-label="First half stoppage minutes" />
               <Input className="w-40" placeholder="2nd-half stoppage (min)" inputMode="numeric" value={ftStop} onChange={(e) => setFtStop(e.target.value.replace(/[^\d]/g, ""))} aria-label="Second half stoppage minutes" />
               <span className="text-xs text-muted-foreground">Clock: 45 + 1st-half stoppage, 15 min half-time break, 45 + 2nd-half stoppage. Blank kickoff starts the match now.</span>
+            </div>
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <p className="text-sm font-semibold">Correct Score <span className="text-xs font-normal text-muted-foreground">— you set these prices. Auto-filled from the 1 X 2 odds; type over any score to set your own price, or blank a score to not offer it. What is set here is exactly what players see and bet at. Rows are home goals, columns are away goals.</span></p>
+            <div className="overflow-x-auto">
+              <table className="border-separate" style={{ borderSpacing: 4 }}>
+                <thead>
+                  <tr>
+                    <th className="text-xs text-muted-foreground">H \ A</th>
+                    {CS_RANGE.map((a) => <th key={a} className="text-xs text-muted-foreground">{a}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {CS_RANGE.map((h) => (
+                    <tr key={h}>
+                      <th className="pr-1 text-xs text-muted-foreground">{h}</th>
+                      {CS_RANGE.map((a) => {
+                        const k = h + ":" + a;
+                        return (
+                          <td key={a}>
+                            <Input
+                              className={"h-8 w-14 px-1 text-center text-xs" + (csEdited.has(k) ? " ring-2 ring-primary" : "")}
+                              inputMode="decimal"
+                              value={cs[k] ?? ""}
+                              onChange={(e) => setCsCell(k, e.target.value.replace(/[^\d.]/g, ""))}
+                              aria-label={"Correct score " + k}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant="secondary" onClick={resetCs}>Reset to auto prices</Button>
+              {csEdited.size > 0 && <span className="text-xs text-muted-foreground">{csEdited.size} price{csEdited.size === 1 ? "" : "s"} set by you</span>}
             </div>
           </div>
         </div>
