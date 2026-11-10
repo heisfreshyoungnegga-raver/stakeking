@@ -21,11 +21,30 @@ const payoutHandler = require('../_handlers/admin/payout');
 const isSuper = (c) => c.service || (c.user && c.user.role === 'super_admin');
 
 // Deposit confirmations: a verified number+amount may dispatch
-// exactly one prompt, mirroring the UI's verify-first flow. In-memory
-// per instance, five-minute TTL (same posture as the login throttle).
-const confirmations = new Map();
-function confirmationKey(userId, phone, network, amountMinor) {
-  return [userId, phone, network, amountMinor].join('|');
+// exactly one prompt, mirroring the UI's verify-first flow. Stored in
+// the database (adapter_deposit_confirmations) with a fifteen-minute
+// TTL: serverless instances share no memory, so the old in-memory map
+// lost confirmations whenever verify and create landed on different
+// instances, stranding users on a Confirm panel the server rejected.
+const CONFIRMATION_TTL_MS = 15 * 60000;
+async function saveConfirmation(userId, phone, network, amountMinor) {
+  await sql('delete from adapter_deposit_confirmations where expires_at <= now()', []);
+  await sql(
+    `insert into adapter_deposit_confirmations (user_id, phone, network, amount_minor, expires_at)
+     values ($1, $2, $3, $4, $5)
+     on conflict (user_id, phone, network, amount_minor)
+     do update set expires_at = excluded.expires_at`,
+    [userId, phone, network, amountMinor, new Date(Date.now() + CONFIRMATION_TTL_MS).toISOString()]
+  );
+}
+async function consumeConfirmation(userId, phone, network, amountMinor) {
+  const rows = await sql(
+    `delete from adapter_deposit_confirmations
+     where user_id = $1 and phone = $2 and network = $3 and amount_minor = $4 and expires_at > now()
+     returning user_id`,
+    [userId, phone, network, amountMinor]
+  );
+  return rows.length > 0;
 }
 function uiIntentStatus(s) {
   const v = String(s || '');
@@ -448,7 +467,7 @@ const RPC = {
       totalMinor,
       currency: 'GHS',
     };
-    confirmations.set(confirmationKey(c.user.id, intl, network, amountMinor), Date.now() + 5 * 60000);
+    await saveConfirmation(c.user.id, intl, network, amountMinor);
     return send(res, 200, { ok: true, quote, error: '', retryAfter: 0 });
   },
 
@@ -461,12 +480,10 @@ const RPC = {
     const network = UI_NETWORKS[String(a._network || '').toLowerCase()] || '';
     const digits = String(c.user.phone || '').replace(/[\s+]/g, '');
     const intl = digits.startsWith('233') ? digits : digits.startsWith('0') ? '233' + digits.slice(1) : digits;
-    const key = confirmationKey(c.user.id, intl, network, amountMinor);
-    const expires = confirmations.get(key);
-    if (!expires || expires < Date.now()) {
+    const confirmed = await consumeConfirmation(c.user.id, intl, network, amountMinor); // one confirmation, one prompt
+    if (!confirmed) {
       return rpcError(res, 'Verify your number first, then confirm the exact total before paying.');
     }
-    confirmations.delete(key); // one confirmation, one prompt
     const out = await invoke(depositMomoHandler, {
       user: c.user,
       body: { amount_ghs: amountMinor / 100, phone: intl, network },

@@ -105,8 +105,19 @@ function Deposit() {
       if (result.id) {
         setPayment({ id: result.id, status: result.status, action: result.action, webhookVerified: false });
         if (result.action?.type === "redirect" && result.action.redirectUrl) window.location.assign(result.action.redirectUrl);
+      } else if (/Verify your number first/.test(result.reason ?? "")) {
+        // The server-side confirmation lapsed: drop the stale panel so
+        // the user lands back on Verify instead of a dead Confirm button.
+        setVerification(null);
+        setRetryReason("That confirmation has expired. Verify your number again, then confirm.");
       } else { setRetryAt(result.retryAt); setNow(Date.now()); setRetryReason(result.reason); }
-    } catch (error) { setRetryReason(error instanceof Error ? error.message : "Payment could not be started"); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Payment could not be started";
+      if (/Verify your number first/.test(message)) {
+        setVerification(null);
+        setRetryReason("That confirmation has expired. Verify your number again, then confirm.");
+      } else setRetryReason(message);
+    }
     finally { setBusy(false); void qc.invalidateQueries({ queryKey: ["my-payment-attempts"] }); }
   }
 
@@ -137,11 +148,11 @@ function Deposit() {
     finally { setBusy(false); }
   }
 
-  return <WalletPage title="Deposit" helpText="ShinobiPay test payments move no money and never credit your wallet. Real-money deposits are locked until a successful test payment, signed confirmation and safe wallet accounting are verified.">
+  return <WalletPage title="Deposit" helpText="Deposits are made through ShinobiPay. Verify your number, confirm the exact total, then approve the prompt on your phone. Your wallet is credited as soon as ShinobiPay confirms the payment.">
     <div className="space-y-4 px-3 pb-8">
-      <div className="border-b border-border bg-paper py-4"><div className="flex items-center justify-between gap-2"><h2 className="text-xl font-bold">ShinobiPay</h2><span className="text-xs font-semibold text-paper-muted">Online payment gateway</span></div><p className="mt-1 text-xs text-paper-muted">{readiness.data?.ready ? "Test payments available" : "Real-money deposits locked"}</p></div>
+      <div className="border-b border-border bg-paper py-4"><div className="flex items-center justify-between gap-2"><h2 className="text-xl font-bold">ShinobiPay</h2><span className="text-xs font-semibold text-paper-muted">Online payment gateway</span></div><p className="mt-1 text-xs text-paper-muted">{readiness.data?.ready ? "Live payments available" : "Deposits unavailable"}</p></div>
       <div className="space-y-2"><label htmlFor="payment-method" className="text-sm font-semibold">Payment method</label><Select value={methodId} onValueChange={(value) => { setMethodId(value); setVerification(null); }} disabled={Boolean(attemptId) || Boolean(activeVerification) || methods.length === 0}><SelectTrigger id="payment-method" className="h-12 w-full rounded-none"><SelectValue placeholder="Checking ShinobiPay methods…" /></SelectTrigger><SelectContent>{methods.map((method) => <SelectItem key={method.id} value={method.id}>{method.label}</SelectItem>)}</SelectContent></Select>
-      <p className="text-xs text-paper-muted">{readiness.data?.methodSource === "documented_ghs" ? "ShinobiPay’s documented Ghana methods; merchant-specific availability is not supplied by its account API." : "Payment methods could not be checked."}</p></div>
+      <p className="text-xs text-paper-muted">{readiness.data?.methodSource === "documented_ghs" ? "MTN Mobile Money, Telecel and AirtelTigo are supported." : "Payment methods could not be checked."}</p></div>
       {methodId !== "CARD" && <div className="flex justify-between text-xs text-paper-muted"><span>Mobile Number</span><span>{profile?.phone ?? "—"}</span></div>}
       <p className="pt-2 text-right text-[11px] text-paper-muted">Balance ({CURRENCY}) {profile ? fmt(profile.balance) : "—"}</p>
       <form className="space-y-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
@@ -149,7 +160,7 @@ function Deposit() {
         {selected?.method === "mobile_money" && !activeVerification ? (
           <Button type="button" className="h-12 w-full rounded-none" disabled={!readiness.data?.ready || !selected || !valid || busy || verifying || Boolean(payment) || waitSeconds > 0} onClick={() => void verify()}>{verifying ? "Verifying number…" : waitSeconds > 0 ? `Retry in ${waitSeconds}s` : readiness.data?.ready ? "Verify number" : "Deposits unavailable"}</Button>
         ) : !activeVerification ? (
-          <Button type="submit" className="h-12 w-full rounded-none" disabled={!readiness.data?.ready || !selected || !valid || busy || Boolean(payment) || waitSeconds > 0}>{busy ? "Checking…" : waitSeconds > 0 ? `Retry in ${waitSeconds}s` : readiness.data?.ready ? "Deposit (test)" : "Deposits unavailable"}</Button>
+          <Button type="submit" className="h-12 w-full rounded-none" disabled={!readiness.data?.ready || !selected || !valid || busy || Boolean(payment) || waitSeconds > 0}>{busy ? "Checking…" : waitSeconds > 0 ? `Retry in ${waitSeconds}s` : readiness.data?.ready ? "Deposit" : "Deposits unavailable"}</Button>
         ) : null}
       </form>
       {activeVerification && !payment && <section className="space-y-3 border border-border bg-paper p-4" aria-label="Confirm payment">
@@ -166,7 +177,7 @@ function Deposit() {
         <Button className="h-12 w-full rounded-none" disabled={busy || waitSeconds > 0} onClick={() => void submit()}>{busy ? "Checking…" : `Confirm & pay ${CURRENCY} ${fmt(activeVerification.quote.totalMinor / 100)}`}</Button>
         <Button variant="ghost" className="h-auto w-full px-0 text-xs" disabled={busy} onClick={() => setVerification(null)}>Change amount or method</Button>
       </section>}
-      <p role="status" className="text-xs text-paper-muted">{readiness.isError ? "Payment availability could not be checked. Real-money deposits remain disabled." : readiness.data?.reason ?? "Checking payment availability…"}</p>
+      <p role="status" className="text-xs text-paper-muted">{readiness.isError ? "Payment availability could not be checked. Please try again in a moment." : readiness.data?.reason ?? "Checking payment availability…"}</p>
       <Button variant="link" className="h-auto px-0" disabled={busy || waitSeconds > 0 || readiness.isFetching} onClick={() => void readiness.refetch()}><RefreshCw className="size-4" />Check gateway</Button>
       {retryReason && <p role="alert" className="text-xs text-destructive">{retryReason}</p>}
       {payment && <section className="space-y-3 border-t border-border py-3">
@@ -183,9 +194,9 @@ function Deposit() {
         {(payment.status === "failed" || payment.webhookVerified) && <Button variant="link" onClick={() => { setPayment(null); setAttemptId(null); setVerification(null); setRetryReason(""); setRetryAt(0); }}>New payment</Button>}
       </section>}
       <section className="border-t border-border pt-4"><div className="flex items-center justify-between"><h2 className="text-lg font-semibold">Recent payment requests</h2><Button variant="ghost" size="icon" aria-label="Refresh payment requests" disabled={attempts.isFetching || busy} onClick={() => void attempts.refetch()}><RefreshCw className="size-4" /></Button></div>
-        {attempts.isError ? <p role="alert" className="text-xs text-destructive">Payment requests could not be loaded.</p> : attempts.isPending ? <p className="text-xs text-paper-muted">Loading requests…</p> : !attempts.data?.length ? <p className="text-xs text-paper-muted">No payment requests yet.</p> : <div className="divide-y divide-border">{attempts.data.map((attempt) => <div key={attempt.id} className="flex items-center justify-between gap-3 py-3"><div className="min-w-0"><p className="text-sm font-semibold">GHS {fmt(attempt.amount_minor / 100)} · {paymentStatusLabel(attempt.status)}</p><p className="text-xs text-paper-muted">{attempt.mode === "test" ? "Test · no wallet credit" : "Live · locked"}{attempt.webhook_verified_at ? " · Confirmation verified" : ""}</p></div>{attempt.intent_id && <Button variant="outline" size="sm" disabled={busy || waitSeconds > 0} onClick={() => { if (attempt.intent_id) void check(attempt.intent_id); }}>Check</Button>}</div>)}</div>}
+        {attempts.isError ? <p role="alert" className="text-xs text-destructive">Payment requests could not be loaded.</p> : attempts.isPending ? <p className="text-xs text-paper-muted">Loading requests…</p> : !attempts.data?.length ? <p className="text-xs text-paper-muted">No payment requests yet.</p> : <div className="divide-y divide-border">{attempts.data.map((attempt) => <div key={attempt.id} className="flex items-center justify-between gap-3 py-3"><div className="min-w-0"><p className="text-sm font-semibold">GHS {fmt(attempt.amount_minor / 100)} · {paymentStatusLabel(attempt.status)}</p><p className="text-xs text-paper-muted">{attempt.mode === "test" ? "Test · no wallet credit" : "Live"}{attempt.webhook_verified_at ? " · Confirmation verified" : ""}</p></div>{attempt.intent_id && <Button variant="outline" size="sm" disabled={busy || waitSeconds > 0} onClick={() => { if (attempt.intent_id) void check(attempt.intent_id); }}>Check</Button>}</div>)}</div>}
       </section>
-      <div className="flex gap-2 border-t border-border pt-3 text-xs text-paper-muted"><ShieldCheck className="size-4 shrink-0" /><p>GHS 1 paid = GHS 1 credited only after verified live success, once. Real-money payments are currently disabled.</p></div>
+      <div className="flex gap-2 border-t border-border pt-3 text-xs text-paper-muted"><ShieldCheck className="size-4 shrink-0" /><p>Your wallet is credited once ShinobiPay confirms your payment — the full amount you paid, credited exactly once.</p></div>
       <ol className="list-inside list-decimal space-y-1 bg-paper p-3 text-xs leading-5 text-paper-muted"><li>Maximum per transaction is {CURRENCY} {fmt(MAX)}.</li><li>Minimum per transaction is {CURRENCY} {fmt(MIN)}.</li><li>Never retry an unknown payment as a new charge.</li></ol>
     </div>
   </WalletPage>;
