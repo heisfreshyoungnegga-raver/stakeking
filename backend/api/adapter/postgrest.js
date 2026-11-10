@@ -1,4 +1,5 @@
-const { sql, readBody, send, guard, getSettings, ensureMatchColumns, ensureBetColumns, keyFor } = require('../_lib');
+const crypto = require('crypto');
+const { sql, readBody, send, guard, getSettings, ensureMatchColumns, ensureBetColumns, keyFor, expandOdds, fullBookFromOdds, cleanGoalSchedule } = require('../_lib');
 const { maybeRefreshLive } = require('../_espn');
 const { afEnabled, maybeRefreshAf } = require('../_apifootball');
 const { maybeRefreshOdds } = require('../_oddsapi');
@@ -40,15 +41,36 @@ function uiMatchToEngine(row) {
   if (row.away_score !== undefined) out.score_away = Number(row.away_score) || 0;
   if (row.home_crest !== undefined) out.home_logo = row.home_crest || null;
   if (row.away_crest !== undefined) out.away_logo = row.away_crest || null;
+  // Goal timing (Prince, 2026-11-10): the admin form's goal script —
+  // the created match's clock and score run from these goal minutes,
+  // exactly like the engine's featured matches. Stoppages ride along.
+  const rawGoals = row.goal_events !== undefined ? row.goal_events : row.goals;
+  if (rawGoals !== undefined) out.goal_events = cleanGoalSchedule(Array.isArray(rawGoals) ? rawGoals : []);
+  const clampStop = (v) => Math.min(15, Math.max(0, Math.round(Number(v) || 0)));
+  if (row.ht_stoppage !== undefined) out.ht_stoppage = clampStop(row.ht_stoppage);
+  if (row.ft_stoppage !== undefined) out.ft_stoppage = clampStop(row.ft_stoppage);
   const hasOddsCols = row.odds_home !== undefined || row.odds_draw !== undefined || row.odds_away !== undefined;
   if (hasOddsCols || row.markets !== undefined) {
     const fromMarkets = uiMarketsToEngine(row.markets || {});
-    const odds = { ...fromMarkets.odds };
-    if (Number(row.odds_home) > 1) odds.o1 = Number(row.odds_home);
-    if (Number(row.odds_draw) > 1) odds.ox = Number(row.odds_draw);
-    if (Number(row.odds_away) > 1) odds.o2 = Number(row.odds_away);
+    const typed = {};
+    if (Number(row.odds_home) > 1) typed.o1 = Number(row.odds_home);
+    if (Number(row.odds_draw) > 1) typed.ox = Number(row.odds_draw);
+    if (Number(row.odds_away) > 1) typed.o2 = Number(row.odds_away);
+    // A complete typed 1X2 derives the full classic book (Double
+    // Chance, Over/Under ladder, GG/NG) the same way the engine's
+    // create-match does; explicit market prices win per key.
+    const base = typed.o1 && typed.ox && typed.o2 ? expandOdds(typed.o1, typed.ox, typed.o2) : {};
+    const odds = { ...base, ...fromMarkets.odds, ...typed };
     out.odds = odds;
-    out.odds_full = fromMarkets.odds_full.length ? fromMarkets.odds_full : null;
+    // Correct Score and the rest of the full book come from the
+    // derived odds_full (Prince, 2026-11-10: admin-added matches must
+    // carry Correct Score like feed matches do). An explicit book
+    // from a market editor wins; otherwise derive from the 1X2.
+    if (fromMarkets.odds_full.length) out.odds_full = fromMarkets.odds_full;
+    else {
+      const book = fullBookFromOdds(odds);
+      out.odds_full = book.length ? book : null;
+    }
   }
   return out;
 }
@@ -346,7 +368,8 @@ async function handleWrite(req, res, table, c) {
   // matches: admin fixture management, translated both ways. The
   // engine's own create-match (goal scripts, featured matches) stays
   // available through the Super Portal; this covers the admin page's
-  // simpler fixture form.
+  // fixture form, which now carries the same derived full book
+  // (Correct Score included) and goal timing as a featured match.
   if (table === 'matches') {
     if (!isAdmin(c)) return pgrstError(res, 403, '42501', 'permission denied');
     await ensureMatchColumns();
@@ -354,10 +377,13 @@ async function handleWrite(req, res, table, c) {
       const out = [];
       for (const item of items) {
         const e = uiMatchToEngine(item);
+        // Operator-created matches are custom matches: the engine's
+        // clock, score and settlement derive from their goal script.
+        if (!e.external_ref) e.external_ref = 'custom:' + crypto.randomUUID();
         const cols = Object.keys(e);
         if (!cols.length) continue;
         const stmt = `insert into matches (${cols.join(', ')}) values (${cols.map((_, i) => '$' + (i + 1)).join(', ')}) returning *`;
-        const vals = cols.map((col) => (col === 'odds' || col === 'odds_full') && e[col] !== null ? JSON.stringify(e[col]) : e[col]);
+        const vals = cols.map((col) => (col === 'odds' || col === 'odds_full' || col === 'goal_events') && e[col] !== null ? JSON.stringify(e[col]) : e[col]);
         const inserted = await sql(stmt, vals);
         out.push(...inserted.map((m) => R.matchRow(m)));
       }
@@ -383,9 +409,17 @@ async function handleWrite(req, res, table, c) {
         if (!cols.length) { done.push(hit); continue; }
         const merged = { ...(engineById[hit.id] || {}) };
         const finalPatch = { ...patch };
-        if (patch.odds) finalPatch.odds = { ...(merged.odds || {}), ...patch.odds };
+        if (patch.odds) {
+          finalPatch.odds = { ...(merged.odds || {}), ...patch.odds };
+          // A derived book follows the merged 1X2, not the patch's
+          // partial line (an explicit markets book still wins).
+          if (patch.odds_full && !(items[0] && items[0].markets)) {
+            const book = fullBookFromOdds(finalPatch.odds);
+            if (book.length) finalPatch.odds_full = book;
+          }
+        }
         const set = cols.map((col, i) => `${col} = $${i + 2}`).join(', ');
-        const vals = cols.map((col) => (col === 'odds' || col === 'odds_full') && finalPatch[col] !== null ? JSON.stringify(finalPatch[col]) : finalPatch[col]);
+        const vals = cols.map((col) => (col === 'odds' || col === 'odds_full' || col === 'goal_events') && finalPatch[col] !== null ? JSON.stringify(finalPatch[col]) : finalPatch[col]);
         const updated = await sql(`update matches set ${set} where id = $1 returning *`, [hit.id, ...vals]);
         done.push(...updated.map((m) => R.matchRow(m)));
       }

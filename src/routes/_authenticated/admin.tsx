@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { TablesUpdate } from "@/integrations/supabase/types";
+import type { TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
 import { categoriesQuery, contentQuery, CURRENCY, fmt } from "@/lib/betting";
 import { PayoutSmsMoment, type PayoutData } from "@/components/PayoutSms";
 import { supportEmailLink, whatsappLink } from "@/lib/account";
@@ -191,16 +191,35 @@ function Matches() {
   });
   const blank = { category_id: "", league: "", home_team: "", away_team: "", start_time: "", odds_home: "2.00", odds_draw: "3.00", odds_away: "3.50" };
   const [f, setF] = useState(blank);
+  // Goal timing: the created match's clock, live score and final
+  // score all run from this script (Prince's featured-match model).
+  const [goals, setGoals] = useState<{ minute: number; side: "home" | "away" }[]>([]);
+  const [gMin, setGMin] = useState("");
+  const [noGoals, setNoGoals] = useState(false);
+  const [htStop, setHtStop] = useState("");
+  const [ftStop, setFtStop] = useState("");
   const refresh = () => { qc.invalidateQueries({ queryKey: ["admin"] }); qc.invalidateQueries({ queryKey: ["matches"] }); };
+
+  function addGoal(side: "home" | "away") {
+    const minute = Math.round(Number(gMin));
+    if (!(minute >= 1 && minute <= 90)) { toast.error("Goal minute must be 1 to 90"); return; }
+    setGoals((g) => [...g, { minute, side }].sort((a, b) => a.minute - b.minute));
+    setGMin(""); setNoGoals(false);
+  }
 
   async function add() {
     if (!f.home_team || !f.away_team || !f.category_id) { toast.error("Category and teams required"); return; }
-    const { error } = await supabase.from("matches").insert({
+    if (!goals.length && !noGoals) { toast.error("Goal timing is required — add the goals, or tick No goals for a 0-0 match"); return; }
+    const payload = {
       ...f, start_time: f.start_time ? new Date(f.start_time).toISOString() : new Date().toISOString(),
       odds_home: Number(f.odds_home), odds_draw: Number(f.odds_draw), odds_away: Number(f.odds_away),
-    });
+      goal_events: goals, ht_stoppage: Number(htStop) || 0, ft_stoppage: Number(ftStop) || 0,
+    };
+    // goal_events / stoppages are adapter-level fields the generated
+    // client types do not know; the cast keeps them on the payload.
+    const { error } = await supabase.from("matches").insert(payload as TablesInsert<"matches">);
     if (err(error)) return;
-    setF(blank); refresh(); toast.success("Match added");
+    setF(blank); setGoals([]); setNoGoals(false); setHtStop(""); setFtStop(""); refresh(); toast.success("Match added");
   }
   async function upd(id: string, patch: TablesUpdate<"matches">) {
     if (err((await supabase.from("matches").update(patch).eq("id", id)).error)) return;
@@ -229,6 +248,31 @@ function Matches() {
             <Input aria-label="Odds 1" value={f.odds_home} onChange={(e) => setF({ ...f, odds_home: e.target.value })} />
             <Input aria-label="Odds X" value={f.odds_draw} onChange={(e) => setF({ ...f, odds_draw: e.target.value })} />
             <Input aria-label="Odds 2" value={f.odds_away} onChange={(e) => setF({ ...f, odds_away: e.target.value })} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <p className="text-sm font-semibold">Goal timing <span className="text-xs font-normal text-muted-foreground">— required. The match clock, live score and final score all run from this script, and Correct Score plus the full market book are priced from the 1 X 2 odds automatically.</span></p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input className="w-24" placeholder="Minute" inputMode="numeric" value={gMin} onChange={(e) => setGMin(e.target.value.replace(/[^\d]/g, ""))} aria-label="Goal minute" />
+              <Button size="sm" variant="secondary" onClick={() => addGoal("home")}>+ Home goal</Button>
+              <Button size="sm" variant="secondary" onClick={() => addGoal("away")}>+ Away goal</Button>
+              <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={noGoals} onChange={(e) => { setNoGoals(e.target.checked); if (e.target.checked) setGoals([]); }} /> No goals — ends 0-0</label>
+            </div>
+            {goals.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                {goals.map((g, i) => (
+                  <span key={i} className="flex items-center gap-1 rounded bg-muted px-2 py-1 text-xs font-semibold">
+                    {g.minute}′ {g.side === "home" ? (f.home_team || "Home") : (f.away_team || "Away")}
+                    <button type="button" aria-label="Remove goal" onClick={() => setGoals(goals.filter((_, j) => j !== i))}>×</button>
+                  </span>
+                ))}
+                <span className="text-xs text-muted-foreground">Final score from script: {goals.filter((g) => g.side === "home").length}–{goals.filter((g) => g.side === "away").length}</span>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <Input className="w-40" placeholder="1st-half stoppage (min)" inputMode="numeric" value={htStop} onChange={(e) => setHtStop(e.target.value.replace(/[^\d]/g, ""))} aria-label="First half stoppage minutes" />
+              <Input className="w-40" placeholder="2nd-half stoppage (min)" inputMode="numeric" value={ftStop} onChange={(e) => setFtStop(e.target.value.replace(/[^\d]/g, ""))} aria-label="Second half stoppage minutes" />
+              <span className="text-xs text-muted-foreground">Clock: 45 + 1st-half stoppage, 15 min half-time break, 45 + 2nd-half stoppage. Blank kickoff starts the match now.</span>
+            </div>
           </div>
         </div>
         <Button variant="brand" onClick={add}>Add match</Button>

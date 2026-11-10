@@ -1,5 +1,5 @@
 const { toUiMarkets, toUiPick } = require('./markets');
-const { currencyOfPhone } = require('../_lib');
+const { currencyOfPhone, isCustomMatch, customMatchState } = require('../_lib');
 
 // Row mappers: engine rows -> the exact shapes the StakeKing UI's
 // generated types describe (src/integrations/supabase/types.ts).
@@ -35,6 +35,10 @@ function sourceOf(ref) {
 // the feed's last sweep time, passed in as feedFresh — never older
 // than the row's own creation.
 function freshStamp(m, feedFresh) {
+  // Operator-created matches carry the operator's own book: it does
+  // not go stale on a provider clock, so it is always current while
+  // the match is on the board (feed rows keep their sweep stamps).
+  if (isCustomMatch(m)) return new Date().toISOString();
   if (m.odds_attempt_at) return iso(m.odds_attempt_at);
   const src = sourceOf(m.external_ref);
   const gate = feedFresh ? (src === 'espn' ? feedFresh.espn : src === 'api-football' ? feedFresh.af : null) : null;
@@ -46,6 +50,10 @@ function freshStamp(m, feedFresh) {
 function matchRow(m, footballCategoryId, feedFresh) {
   const odds = m.odds || {};
   const fresh = freshStamp(m, feedFresh);
+  // Custom (operator-created) matches run on their goal script: the
+  // board shows the clock-derived status, minute and score, exactly
+  // like the engine's own match feed does.
+  const st = isCustomMatch(m) ? customMatchState(m) : null;
   return {
     id: m.id,
     league: m.league,
@@ -58,10 +66,10 @@ function matchRow(m, footballCategoryId, feedFresh) {
     home_crest: m.home_logo || null,
     away_crest: m.away_logo || null,
     start_time: iso(m.starts_at),
-    status: m.status,
-    minute: m.minute == null ? null : Number(m.minute),
-    home_score: Number(m.score_home || 0),
-    away_score: Number(m.score_away || 0),
+    status: st ? st.status : m.status,
+    minute: st ? (st.minute == null ? null : Number(st.minute)) : (m.minute == null ? null : Number(m.minute)),
+    home_score: st ? Number(st.score_home || 0) : Number(m.score_home || 0),
+    away_score: st ? Number(st.score_away || 0) : Number(m.score_away || 0),
     odds_home: Number(odds.o1 || 0),
     odds_draw: Number(odds.ox || 0),
     odds_away: Number(odds.o2 || 0),
