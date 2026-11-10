@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { CURRENCY, fmt, profileQuery } from "@/lib/betting";
 import { WalletPage, WalletMethod } from "@/components/WalletPage";
 import { PayoutSmsMoment, type PayoutData } from "@/components/PayoutSms";
@@ -100,12 +99,6 @@ function Withdraw() {
         <Input inputMode="decimal" placeholder={`Amount(${CURRENCY})`} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} className="h-12 rounded-none bg-transparent" aria-label="Amount" />
         {met && <Button type="submit" className="h-12 w-full rounded-none" disabled={loading || !amount || !account}>{loading ? "Submitting…" : "Withdraw"}</Button>}
       </form>
-      {met && <div className="space-y-2 text-xs text-paper-muted">
-        <p>Wagering requirement (2× deposits): {fmt(prog)} / {fmt(req)}</p>
-        <Progress value={req ? (prog / req) * 100 : 100} className="h-1" />
-        <p>Eligible to request withdrawal.</p>
-        <p>Every request needs manual approval before payment is sent.</p>
-      </div>}
       {requests.length > 0 && <section className="border-t border-border pt-4"><h2 className="mb-2 font-sans text-sm font-semibold">My withdrawal requests</h2><div className="divide-y divide-border">{requests.map((r) => <div key={r.id} className="flex items-center justify-between py-3 text-sm"><div><p className="font-bold">{CURRENCY} {fmt(r.amount)}</p><p className="text-xs text-paper-muted">{new Date(r.created_at).toLocaleString()}</p></div><span className={cn("px-2 py-1 text-xs capitalize", STATUS_STYLE[r.status] ?? "bg-secondary text-muted-foreground")}>{r.status}</span></div>)}</div></section>}
     </div>
     {payout && <PayoutSmsMoment payout={payout} variant="request" onClose={() => setPayout(null)} />}
