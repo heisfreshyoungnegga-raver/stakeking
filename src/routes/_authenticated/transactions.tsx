@@ -30,7 +30,12 @@ export const Route = createFileRoute("/_authenticated/transactions")({
   component: OpenBets,
 });
 
-type BetSel = { match_id?: string; match: string; market?: string; pick: string; odds: number };
+type BetSel = {
+  match_id?: string; match: string; market?: string; pick: string; odds: number;
+  status?: string; match_status?: string;
+  now_odds?: number | null; live_minute?: number | null; live_label?: string | null;
+  live_home?: number; live_away?: number; score_home?: number; score_away?: number;
+};
 type Bet = {
   id: string;
   stake: number;
@@ -45,6 +50,7 @@ type Bet = {
 function useMyBets() {
   return useQuery({
     queryKey: ["bets", "mine"],
+    refetchInterval: 30_000,
     queryFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return [];
@@ -110,9 +116,10 @@ function OpenBets() {
   useEffect(() => setTab(initialTab ?? "open"), [initialTab]);
   const [banner, setBanner] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [cashoutBet, setCashoutBet] = useState<Bet | null>(null);
   const { data: profile } = useQuery(profileQuery);
-  const { data: matches = [] } = useQuery(matchesQuery);
+  const { data: matches = [] } = useQuery({ ...matchesQuery, refetchInterval: 30_000 });
   const bets = useMyBets();
   const liveIds = useLiveMatchIds();
   const qc = useQueryClient();
@@ -146,13 +153,23 @@ function OpenBets() {
     return [...groups.entries()];
   }, [all, histStatus, histResult, historyDate]);
 
-  const toggleExpand = (id: string) =>
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  // A leg is live when the adapter's per-leg state or the board's
+  // live set says its match is in play. A ticket with a live leg
+  // opens itself (Prince, 2026-11-11: "when is on live game" the
+  // ticket shows its legs, live odds and cashout like his reference)
+  // until the user folds it away.
+  const legLive = (s: BetSel) => s.match_status === "live" || (!!s.match_id && !!liveIds.data?.has(s.match_id));
+  const betLive = (b: Bet) => (b.selections ?? []).some(legLive);
+  const isExpanded = (b: Bet) => expanded.has(b.id) || (betLive(b) && !dismissed.has(b.id));
+  const toggleExpand = (b: Bet) => {
+    if (isExpanded(b)) {
+      setExpanded((prev) => { const n = new Set(prev); n.delete(b.id); return n; });
+      if (betLive(b)) setDismissed((prev) => new Set(prev).add(b.id));
+    } else {
+      setDismissed((prev) => { const n = new Set(prev); n.delete(b.id); return n; });
+      setExpanded((prev) => new Set(prev).add(b.id));
+    }
+  };
 
   const remix = (b: Bet) => {
     slip.load(toSlipSelections(b));
@@ -249,11 +266,15 @@ function OpenBets() {
             <div className="space-y-3">
               {shown.map((b) => {
                 const offer = offers.data?.[b.id] ?? 0;
-                const isOpen = expanded.has(b.id);
+                const isOpen = isExpanded(b);
+                const hasLive = betLive(b);
                 return (
                   <div key={b.id} className="rounded-md border border-border bg-card p-3 shadow-sm">
                     <div className="mb-2 flex items-center justify-between border-b border-border pb-2">
-                      <Link to="/ticket/$betId" params={{ betId: b.id }} className="font-bold">{b.selections?.length > 1 ? "Multiple" : "Single"}</Link>
+                      <span className="flex items-center gap-2">
+                        <Link to="/ticket/$betId" params={{ betId: b.id }} className="font-bold">{b.selections?.length > 1 ? "Multiple" : "Single"}</Link>
+                        {hasLive && <span className="rounded-sm bg-primary/15 px-1.5 py-0.5 text-[11px] font-bold text-primary">Live</span>}
+                      </span>
                       <span className="flex items-center gap-4 text-primary">
                         <button onClick={() => remix(b)} className="flex items-center gap-1 text-xs font-semibold"><RefreshCw className="h-4 w-4" /> Rebet</button>
                         <button onClick={() => share(b)} aria-label="Share bet"><Share2 className="h-4 w-4" /></button>
@@ -264,6 +285,13 @@ function OpenBets() {
                       <div className="divide-y divide-border">
                         {(b.selections ?? []).map((s, i) => {
                           const m = s.match_id ? matchById.get(s.match_id) : undefined;
+                          const live = legLive(s);
+                          const minute = s.live_minute ?? (m ? (m.minute as number | null) : null);
+                          const lh = s.live_home ?? (m ? m.home_score : 0);
+                          const la = s.live_away ?? (m ? m.away_score : 0);
+                          const clock = s.live_label
+                            ? s.live_label
+                            : minute != null ? `${minute}' ${minute <= 45 ? "H1" : "H2"}` : "Live";
                           return (
                             <div key={i} className="flex gap-3 py-3 text-sm">
                               <Clock className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
@@ -273,10 +301,20 @@ function OpenBets() {
                                   <b className="capitalize">{s.pick} @{Number(s.odds).toFixed(2)}</b>
                                   <span className="text-xs text-muted-foreground">{s.market ?? "1X2"}</span>
                                 </p>
+                                {live && s.now_odds != null && (
+                                  <p className="mt-1 flex items-center gap-1.5">
+                                    <span className="rounded-sm bg-primary/15 px-1.5 py-0.5 text-xs font-semibold text-primary">Live Odds</span>
+                                    <b>{Number(s.now_odds).toFixed(2)}</b>
+                                  </p>
+                                )}
                                 <p className="mt-0.5 truncate underline underline-offset-2">{s.match}</p>
-                                <p className="mt-0.5 text-xs text-muted-foreground">
-                                  {m ? `${new Date(m.start_time).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}${m.status === "live" ? ` · Live ${m.minute ?? ""}'` : ""}` : ""}
-                                </p>
+                                {live ? (
+                                  <p className="mt-0.5 text-xs font-bold text-primary">{clock} | {lh}:{la}</p>
+                                ) : (
+                                  <p className="mt-0.5 text-xs text-muted-foreground">
+                                    {m ? new Date(m.start_time).toLocaleString("en-GB", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : ""}
+                                  </p>
+                                )}
                               </div>
                             </div>
                           );
@@ -286,7 +324,7 @@ function OpenBets() {
                       <p className="truncate py-1 text-sm">{b.selections?.[0]?.match}</p>
                     )}
 
-                    <button onClick={() => toggleExpand(b.id)} className="mt-1 flex w-full items-center justify-end gap-1 text-xs font-semibold text-muted-foreground">
+                    <button onClick={() => toggleExpand(b)} className="mt-1 flex w-full items-center justify-end gap-1 text-xs font-semibold text-muted-foreground">
                       {isOpen ? <>Hide Match Details <ChevronUp className="h-4 w-4" /></> : <>View Match Details <ChevronDown className="h-4 w-4" /></>}
                     </button>
 

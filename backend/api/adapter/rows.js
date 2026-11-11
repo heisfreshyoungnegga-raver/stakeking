@@ -1,5 +1,5 @@
 const { toUiMarkets, toUiPick } = require('./markets');
-const { currencyOfPhone, isCustomMatch, customMatchState } = require('../_lib');
+const { currencyOfPhone, isCustomMatch, customMatchState, livePriceFor, currentPickOdds } = require('../_lib');
 
 // Row mappers: engine rows -> the exact shapes the StakeKing UI's
 // generated types describe (src/integrations/supabase/types.ts).
@@ -115,7 +115,7 @@ function userRoleRow(user) {
 function selectionUi(sel, match) {
   const ui = toUiPick(sel.market, sel.pick);
   const label = match ? match.home_team + ' vs ' + match.away_team : '';
-  return {
+  const out = {
     matchId: sel.match_id,
     label,
     market: ui.market,
@@ -140,6 +140,43 @@ function selectionUi(sel, match) {
     score_away: match ? Number(match.score_away || 0) : undefined,
     match_status: match ? match.status : undefined,
   };
+  // Live state per leg (Prince, 2026-11-11, his SportyBet reference
+  // ticket): while a leg's match is in play the ticket shows the
+  // current score, the clock and the pick's moving in-play price
+  // (now_odds) next to the placed price — the same fields the
+  // engine's own Bets view (mine.js) attaches. Operator-created
+  // matches derive state from their real football clock; feed
+  // matches use their stored status, score and minute.
+  if (match) {
+    try {
+      const cst = isCustomMatch(match) ? customMatchState(match) : null;
+      if (cst) {
+        out.match_status = cst.status;
+        out.score_home = Number(cst.score_home || 0);
+        out.score_away = Number(cst.score_away || 0);
+        out.live_home = Number(cst.score_home || 0);
+        out.live_away = Number(cst.score_away || 0);
+        out.live_minute = cst.minute == null ? null : Number(cst.minute);
+        out.live_label = cst.minute_label || null;
+      } else {
+        out.live_home = Number(match.score_home || 0);
+        out.live_away = Number(match.score_away || 0);
+        out.live_minute = match.minute == null ? null : Number(match.minute);
+        out.live_label = null;
+      }
+      if (!sel.result || sel.result === 'pending') {
+        if (out.match_status === 'live') {
+          const src = cst
+            ? { ...match, status: 'live', score_home: out.live_home, score_away: out.live_away, minute: out.live_minute }
+            : match;
+          out.now_odds = livePriceFor(src, sel.market, sel.pick);
+        } else if (out.match_status === 'upcoming') {
+          out.now_odds = currentPickOdds(match, sel.market, sel.pick);
+        } else out.now_odds = null;
+      }
+    } catch (e) { /* live decoration is best-effort; the stored leg still renders */ }
+  }
+  return out;
 }
 
 function betRow(bet, selections, bookingCode) {

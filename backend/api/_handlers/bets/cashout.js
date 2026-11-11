@@ -4,10 +4,12 @@ const { sql, readBody, send, guard, requireAuth, getSettings, cashoutQuoteFor, m
 // the house for its current mathematical value — potential payout
 // discounted by the current odds of its pending legs and the
 // operator's cashout margin (see cashoutQuoteFor in _lib). The quote
-// is ALWAYS recomputed here from live prices; nothing the client
-// sends about money is trusted. No quote exists while any leg's
-// match is live: the button simply is not shown then, and a stale
-// tap lands here and gets cashout_unavailable.
+// is ALWAYS recomputed here from current prices; nothing the client
+// sends about money is trusted. On this StakeKing deployment a
+// ticket stays sellable while its matches are live (Prince,
+// 2026-11-11), priced off the modelled in-play odds; a leg whose
+// match has finished or cannot be priced still gets
+// cashout_unavailable.
 module.exports = guard(async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'method_not_allowed' });
   const auth = requireAuth(req, res);

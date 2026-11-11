@@ -1519,8 +1519,25 @@ function cashoutQuoteFor(bet, legs, marginPct) {
   for (const leg of legs) {
     if (leg.result === 'lost') return null;
     if (leg.result === 'won') continue;
-    if (legDerivedStatus(leg.match) !== 'upcoming') return null;
-    const cur = currentPickOdds(leg.match, leg.market, leg.pick);
+    const st = legDerivedStatus(leg.match);
+    let cur = null;
+    if (st === 'upcoming') {
+      cur = currentPickOdds(leg.match, leg.market, leg.pick);
+    } else if (st === 'live') {
+      // Live cashout (Prince, 2026-11-11, his SportyBet reference
+      // ticket): a ticket stays sellable while its matches are in
+      // play, priced off the modelled in-play odds — the same
+      // livePriceFor the Bets view shows as the leg's moving price.
+      // StakeKing deployment only; the PrimeStake/Oddaroa rule
+      // (no quote while a leg is live) is unchanged on their hosts.
+      try {
+        const m = leg.match;
+        const src = isCustomMatch(m)
+          ? { ...m, status: 'live', score_home: customMatchState(m).score_home, score_away: customMatchState(m).score_away, minute: customMatchState(m).minute }
+          : m;
+        cur = livePriceFor(src, leg.market, leg.pick);
+      } catch (e) { cur = null; }
+    } else return null;
     if (!cur) return null;
     p *= 1 / cur;
   }

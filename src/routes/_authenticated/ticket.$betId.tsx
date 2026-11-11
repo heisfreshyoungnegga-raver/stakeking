@@ -27,7 +27,11 @@ export const Route = createFileRoute("/_authenticated/ticket/$betId")({
   component: TicketDetails,
 });
 
-type BetSel = { match_id?: string; match: string; market?: string; pick: string; odds: number };
+type BetSel = {
+  match_id?: string; match: string; market?: string; pick: string; odds: number;
+  match_status?: string; now_odds?: number | null;
+  live_minute?: number | null; live_label?: string | null; live_home?: number; live_away?: number;
+};
 type Bet = {
   id: string;
   stake: number;
@@ -60,13 +64,14 @@ function TicketDetails() {
 
   const { data: bet, isLoading } = useQuery({
     queryKey: ["ticket", betId],
+    refetchInterval: 30_000,
     queryFn: async () => {
       const { data, error } = await supabase.from("bets").select("*").eq("id", betId).maybeSingle();
       if (error) throw error;
       return data as unknown as Bet | null;
     },
   });
-  const { data: matches = [] } = useQuery(matchesQuery);
+  const { data: matches = [] } = useQuery({ ...matchesQuery, refetchInterval: 30_000 });
   const matchById = new Map(matches.map((m) => [m.id, m]));
 
   if (isLoading) {
@@ -236,6 +241,11 @@ function TicketDetails() {
                 {m && m.status === "finished" && (
                   <p className="mt-1 text-[10px] text-paper-muted/70">FT Score <span className="ml-2 text-paper-foreground">{m.home_score}:{m.away_score}</span></p>
                 )}
+                {(s.match_status === "live" || (m && m.status === "live")) && (
+                  <p className="mt-1 text-[10px] font-bold text-primary">
+                    Live {s.live_label ?? `${s.live_minute ?? m?.minute ?? ""}'`} <span className="ml-2">{s.live_home ?? m?.home_score ?? 0}:{s.live_away ?? m?.away_score ?? 0}</span>
+                  </p>
+                )}
                 <div className={cn("relative mt-1 space-y-1 overflow-hidden px-3 py-2 text-[10px]", returned ? "bg-odds-soft/40" : "bg-background")}>
                   <p>
                     <span className="mr-2 inline-block w-9 text-right text-paper-muted/70">Pick</span>
@@ -243,6 +253,9 @@ function TicketDetails() {
                     {won && <CheckCircle2 className="ml-1.5 inline h-4 w-4 text-primary" />}
                   </p>
                   <p><span className="mr-2 inline-block w-9 text-right text-paper-muted/70">Market</span>{s.market ?? "1X2"}</p>
+                  {(s.match_status === "live" || (m && m.status === "live")) && s.now_odds != null && (
+                    <p><span className="mr-2 inline-block w-9 text-right text-paper-muted/70">Live Odds</span><span className="font-bold text-primary">{Number(s.now_odds).toFixed(2)}</span></p>
+                  )}
                   {won && <p><span className="mr-2 inline-block w-9 text-right text-paper-muted/70">Outcome</span><span className="capitalize">{s.pick}</span></p>}
                   {won && <Trophy className="pointer-events-none absolute right-3 top-1/2 h-9 w-9 -translate-y-1/2 text-primary/10" />}
                 </div>
