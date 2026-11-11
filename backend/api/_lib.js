@@ -1227,6 +1227,14 @@ function ensureMatchColumns() {
       // it and /api/matches 500'd until it was added by hand on
       // 2026-11-09. Self-heal it here like the others.
       await msql(`alter table matches add column if not exists odds_full jsonb`);
+      // HT scores (2026-11-11): settleMatch reads score_home_ht /
+      // score_away_ht to decide half markets, but the StakeKing schema
+      // never had them — every settlement threw and finished matches
+      // sat unsettled until an admin settled by hand. Self-heal here;
+      // settleMatch also tolerates their absence now, so settlement
+      // works from the first read even before this ALTER lands.
+      await msql(`alter table matches add column if not exists score_home_ht int`);
+      await msql(`alter table matches add column if not exists score_away_ht int`);
       // 'postponed' joined the status vocabulary with the created-
       // games lifecycle (2026-11-05); the original CHECK only knew
       // upcoming/live/finished and rejected postponed games. The swap
@@ -1277,9 +1285,20 @@ async function matchesById(ids) {
 async function settleMatch(matchId, home, away) {
   // Half-time score decides the full-book half markets; without it
   // those selections stay pending instead of being guessed.
-  const htRow = await msql('select score_home_ht, score_away_ht, external_ref, goal_events from matches where id = $1', [matchId]);
-  let htH = htRow.length ? htRow[0].score_home_ht : null;
-  let htA = htRow.length ? htRow[0].score_away_ht : null;
+  // Hardened 2026-11-11: StakeKing's matches table predates the
+  // HT-score columns, so the bare select threw and EVERY settlement
+  // died silently inside maybeAutoSettle's try/catch — finished
+  // matches sat unsettled for days. Settle on the full-time score
+  // alone when the columns are absent; half markets stay pending.
+  let htRow = [];
+  let htH = null, htA = null;
+  try {
+    htRow = await msql('select score_home_ht, score_away_ht, external_ref, goal_events from matches where id = $1', [matchId]);
+    htH = htRow.length ? htRow[0].score_home_ht : null;
+    htA = htRow.length ? htRow[0].score_away_ht : null;
+  } catch (e) {
+    try { htRow = await msql('select external_ref, goal_events from matches where id = $1', [matchId]); } catch (_) { htRow = []; }
+  }
   if ((htH === null || htH === undefined) && htRow.length && isCustomMatch(htRow[0])) {
     // Created matches carry no feed half-time score — theirs is in
     // the goal schedule: everything at minute 45 or earlier (45+2

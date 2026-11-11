@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { sql, readBody, send, guard, getSettings, ensureMatchColumns, ensureBetColumns, keyFor, expandOdds, fullBookFromOdds, cleanGoalSchedule } = require('../_lib');
+const { sql, readBody, send, guard, getSettings, ensureMatchColumns, ensureBetColumns, keyFor, expandOdds, fullBookFromOdds, cleanGoalSchedule, maybeAutoSettle } = require('../_lib');
 const { maybeRefreshLive } = require('../_espn');
 const { afEnabled, maybeRefreshAf } = require('../_apifootball');
 const { maybeRefreshOdds } = require('../_oddsapi');
@@ -177,6 +177,12 @@ const fetchers = {
     await maybeRefreshLive().catch(() => {});
     if (afEnabled()) await maybeRefreshAf().catch(() => {});
     await maybeRefreshOdds().catch(() => {});
+    // Auto-settle (Prince, 2026-11-11): the engine's maybeAutoSettle
+    // used to run only from api/matches.js, which this frontend never
+    // calls — finished feed matches sat unsettled until an admin
+    // settled them by hand. The board read is the live trigger now
+    // (throttled to one pass a minute inside maybeAutoSettle).
+    await maybeAutoSettle().catch(() => {});
     const rows = await sql('select * from matches order by starts_at asc limit 2000');
     // Feed sweep stamps feed the rows' freshness (see rows.js).
     let feedFresh = null;
@@ -229,6 +235,10 @@ const fetchers = {
   },
   async bets(c) {
     if (!c.user && !c.service) return [];
+    // Same auto-settle trigger as the board read above, so opening
+    // My Bets / Open Bets settles finished matches even if the board
+    // was not refreshed in this session.
+    await maybeAutoSettle().catch(() => {});
     await ensureBetColumns();
     const bets = isAdmin(c)
       ? await sql('select b.* from bets b left join adapter_hidden_bets h on h.bet_id = b.id where h.bet_id is null order by b.placed_at desc limit 1000')
