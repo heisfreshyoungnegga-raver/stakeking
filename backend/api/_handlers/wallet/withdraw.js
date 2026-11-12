@@ -36,7 +36,19 @@ module.exports = guard(async (req, res) => {
     payoutMeta = { currency: 'NGN', bank_code: bankCode, bank_name: bankName, account_number: acctNum, account_name: acctName };
     methodLabel = 'Bank transfer';
   }
-  // Bonus money is stake-only (Prince, 2026-11-09): the withdrawable
+  // Ghana payouts are manual (Prince, 2026-11-12): the player names the
+  // MoMo number and the name on the receiving account, and both ride to
+  // the super admin with the request so the payout can be matched by
+  // hand. The request's own row id is its transaction reference.
+  let payoutNote = null;
+  if (!isNgn) {
+    const momoNumber = String(body.account_number || body.momo_number || '').replace(/\D/g, '').slice(0, 15);
+    const accountName = String(body.sender_name || body.account_name || '').trim().slice(0, 80);
+    if (momoNumber.length >= 9 && accountName.length >= 2) {
+      payoutMeta = { currency: 'GHS', method: methodLabel, momo_number: momoNumber, account_name: accountName };
+      payoutNote = `payout ${accountName} · ${momoNumber}`;
+    }
+  }
   // ceiling is balance minus the bonus bucket.
   const urow = await sql('select balance_ghs, bonus_ghs from users where id = $1', [auth.uid]);
   const bonusHeld = urow.length ? Number(urow[0].bonus_ghs || 0) : 0;
@@ -54,10 +66,10 @@ module.exports = guard(async (req, res) => {
          where id = $1 and balance_ghs >= $2
          returning id
        )
-       insert into wallet_transactions (user_id, kind, method, amount_ghs, status, payout_meta)
-       select $1, 'withdrawal', $3, -$2, 'pending', $4::jsonb from bal
+       insert into wallet_transactions (user_id, kind, method, amount_ghs, status, payout_meta, note)
+       select $1, 'withdrawal', $3, -$2, 'pending', $4::jsonb, $5 from bal
        returning id, status, created_at`,
-      [auth.uid, amount, methodLabel, payoutMeta ? JSON.stringify(payoutMeta) : null]
+      [auth.uid, amount, methodLabel, payoutMeta ? JSON.stringify(payoutMeta) : null, payoutNote]
     );
   } catch (e) {
     if (String(e.dbMessage || '').includes('withdrawal locked')) {

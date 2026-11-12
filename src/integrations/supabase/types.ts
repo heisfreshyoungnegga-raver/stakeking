@@ -664,6 +664,10 @@ export type Database = {
         Args: { _amount: number; _user: string }
         Returns: undefined
       }
+      admin_review_deposit: {
+        Args: { _approve: boolean; _tx: string }
+        Returns: undefined
+      }
       admin_review_withdrawal: {
         Args: { _approve: boolean; _tx: string }
         Returns: undefined
@@ -705,6 +709,15 @@ export type Database = {
       create_booking_code: { Args: { _selections: Json }; Returns: string }
       delete_ticket: { Args: { _bet: string }; Returns: undefined }
       demo_deposit: { Args: { _amount: number }; Returns: number }
+      deposit_manual: {
+        Args: {
+          _amount_ghs: number
+          _external_ref: string
+          _sender_name: string
+          _sender_phone: string
+        }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -732,7 +745,15 @@ export type Database = {
         }
         Returns: string
       }
-      request_withdrawal: { Args: { _amount: number }; Returns: undefined }
+      request_withdrawal: {
+        Args: {
+          _account?: string
+          _amount: number
+          _method?: string
+          _sender_name?: string
+        }
+        Returns: undefined
+      }
       save_shinobipay_credentials: {
         Args: {
           _api_key_ciphertext?: string

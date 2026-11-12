@@ -213,6 +213,9 @@ function transactionRow(wt) {
     amount: Number(wt.amount_ghs || 0),
     status: wt.status,
     note: wt.note || wt.method || '',
+    method: wt.method || '',
+    external_ref: wt.external_ref || '',
+    payout_meta: wt.payout_meta || null,
     created_at: iso(wt.created_at),
   };
 }

@@ -7,6 +7,7 @@ const placeHandler = require('../_handlers/bets/place');
 const cashoutHandler = require('../_handlers/bets/cashout');
 const withdrawHandler = require('../_handlers/wallet/withdraw');
 const depositMomoHandler = require('../_handlers/wallet/deposit-momo');
+const depositManualHandler = require('../_handlers/wallet/deposit-manual');
 const depositStatusHandler = require('../_handlers/wallet/deposit-status');
 const depositOtpHandler = require('../_handlers/wallet/deposit-otp');
 const balanceEditHandler = require('../_handlers/admin/balance-edit');
@@ -198,7 +199,15 @@ const RPC = {
 
   async request_withdrawal(c, a, res) {
     if (!c.user) return rpcError(res, 'You need to sign in.', 401);
-    const out = await invoke(withdrawHandler, { user: c.user, body: { amount_ghs: Number(a._amount), method: 'MTN MoMo' } });
+    const out = await invoke(withdrawHandler, {
+      user: c.user,
+      body: {
+        amount_ghs: Number(a._amount),
+        method: String(a._method || 'MTN MoMo'),
+        account_number: String(a._account || ''),
+        sender_name: String(a._sender_name || ''),
+      },
+    });
     if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'The withdrawal could not be requested.'));
     // Hand back the payout shape so an admin-tier caller gets the
     // Oddaroa SMS moment at request time (the request itself stays
@@ -229,6 +238,17 @@ const RPC = {
     // (Prince, 2026-11-09: StakeKing admins take the same SMS
     // notification as Oddaroa's).
     return send(res, 200, out.json && out.json.payout ? out.json.payout : null);
+  },
+
+  // Manual deposits are super-admin only (Prince, 2026-11-12): the
+  // transaction ID and sender's name go to the super admin for
+  // approval, same as withdrawals.
+  async admin_review_deposit(c, a, res) {
+    if (!isSuper(c)) return rpcError(res, 'Super admin access required.', 403);
+    const handler = a._approve ? confirmHandler : rejectHandler;
+    const out = await invoke(handler, { user: c.user, body: { id: String(a._tx || '') } });
+    if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'The review could not be completed.'));
+    return send(res, 200, null);
   },
 
   // ---- Admin teams + invites (Oddaroa model, Prince 2026-11-09) ----
@@ -499,6 +519,26 @@ const RPC = {
       reason: '',
       action: uiAction(out.json.next_action),
     });
+  },
+
+  // Manual deposit (StakeKing is manual-only since 2026-11-12): the
+  // player sends Telecel Cash to the number in operator_settings and
+  // submits the amount + transaction ID + sender name. The row lands
+  // PENDING for the super admin; nothing is credited here. The
+  // player-side screenshot is a preview only and is never sent.
+  async deposit_manual(c, a, res) {
+    if (!c.user) return rpcError(res, 'You need to sign in.', 401);
+    const out = await invoke(depositManualHandler, {
+      user: c.user,
+      body: {
+        amount_ghs: Number(a._amount_ghs),
+        sender_phone: String(a._sender_phone || ''),
+        sender_name: String(a._sender_name || ''),
+        external_ref: String(a._external_ref || ''),
+      },
+    });
+    if (!out.json || out.status >= 400) return rpcError(res, engineMessage(out, 'The deposit could not be submitted.'));
+    return send(res, 200, out.json.transaction || null);
   },
 
   async _attemptByIntent(c, intentId) {

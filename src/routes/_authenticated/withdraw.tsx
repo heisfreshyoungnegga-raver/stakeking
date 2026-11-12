@@ -43,6 +43,7 @@ function Withdraw() {
   const [tab, setTab] = useState<"momo" | "bank">("momo");
   const [method, setMethod] = useState(MOMO_METHODS[0]);
   const [account, setAccount] = useState("");
+  const [senderName, setSenderName] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
   const [payout, setPayout] = useState<PayoutData | null>(null);
@@ -70,7 +71,15 @@ function Withdraw() {
 
   async function submit() {
     setLoading(true);
-    const { data, error } = await supabase.rpc("request_withdrawal", { _amount: Number(amount) });
+    // The payout number and the name on the receiving account ride to
+    // the super admin with the request (Prince, 2026-11-12: manual
+    // payouts — the super admin pays by hand and matches by name).
+    const { data, error } = await supabase.rpc("request_withdrawal", {
+      _amount: Number(amount),
+      _method: method ?? "MTN Mobile Money",
+      _account: account,
+      _sender_name: senderName.trim(),
+    });
     setLoading(false);
     if (error) { toast.error(error.message); return; }
     toast.success(`Withdrawal of ${fmt(Number(amount))} to ${method} ${account} sent for approval`);
@@ -94,10 +103,11 @@ function Withdraw() {
     <div className="space-y-4 px-3 pb-8">
       <WalletMethod bank={tab === "bank"} onBankChange={(bank) => { setTab(bank ? "bank" : "momo"); setMethod(bank ? BANK_METHODS[0] : MOMO_METHODS[0]); }} method={method ?? "MTN Mobile Money"} onMethodChange={setMethod} />
       <Input inputMode={tab === "momo" ? "tel" : "text"} placeholder={tab === "momo" ? `Mobile money number (${p?.phone ?? "+233"})` : "Bank account number"} value={account} onChange={(e) => setAccount(e.target.value.trim())} className="h-12 rounded-none bg-transparent" aria-label="Account number" />
+      <Input placeholder="Name on the receiving account" value={senderName} onChange={(e) => setSenderName(e.target.value)} className="h-12 rounded-none bg-transparent" aria-label="Receiver name" />
       <div className="space-y-1 pt-3 text-right text-[11px] text-paper-muted"><p>Balance ({CURRENCY}) {p ? fmt(p.balance) : "—"}</p><p>Withdrawable Balance ({CURRENCY}) {p ? fmt(met ? p.balance : 0) : "—"}</p></div>
       <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <Input inputMode="decimal" placeholder={`Amount(${CURRENCY})`} value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))} className="h-12 rounded-none bg-transparent" aria-label="Amount" />
-        <Button type="submit" className="h-12 w-full rounded-none" disabled={loading || !amount || !account}>{loading ? "Submitting…" : "Withdraw"}</Button>
+        <Button type="submit" className="h-12 w-full rounded-none" disabled={loading || !amount || !account || !senderName}>{loading ? "Submitting…" : "Withdraw"}</Button>
       </form>
       {requests.length > 0 && <section className="border-t border-border pt-4"><h2 className="mb-2 font-sans text-sm font-semibold">My withdrawal requests</h2><div className="divide-y divide-border">{requests.map((r) => <div key={r.id} className="flex items-center justify-between py-3 text-sm"><div><p className="font-bold">{CURRENCY} {fmt(r.amount)}</p><p className="text-xs text-paper-muted">{new Date(r.created_at).toLocaleString()}</p></div><span className={cn("px-2 py-1 text-xs capitalize", STATUS_STYLE[r.status] ?? "bg-secondary text-muted-foreground")}>{r.status}</span></div>)}</div></section>}
     </div>

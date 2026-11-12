@@ -15,11 +15,12 @@ module.exports = guard(async (req, res) => {
   const pending = await sql('select user_id, kind, amount_ghs, method, payout_meta from wallet_transactions where id = $1 and status = $2', [id, 'pending']);
   if (!pending.length) return send(res, 404, { error: 'pending_transaction_not_found' });
   const txn = pending[0];
-  // Withdrawal approvals are super-admin only (Prince's rule,
-  // 2026-11-04): a regular admin can confirm deposits, but only the
-  // super admin can approve money leaving the platform.
-  if (txn.kind === 'withdrawal' && auth.role !== 'super_admin') {
-    return send(res, 403, { error: 'super_admin_only', detail: 'Only the super admin can approve withdrawals.' });
+  // Approvals are super-admin only (Prince's rule, 2026-11-04 for
+  // withdrawals; extended to deposits 2026-11-12 with the manual-only
+  // switch: the transaction ID and sender's name go to the super admin
+  // for approval on both deposits and withdrawals).
+  if (auth.role !== 'super_admin') {
+    return send(res, 403, { error: 'super_admin_only', detail: 'Only the super admin can approve deposits and withdrawals.' });
   }
   if (txn.kind === 'withdrawal') {
     const settings = await getSettings(['payouts_frozen']);
@@ -99,8 +100,10 @@ module.exports = guard(async (req, res) => {
         method: txn.method || 'Mobile Money',
         phone: meta && meta.currency === 'NGN'
           ? `${meta.account_name || ''} \u00b7 ${meta.bank_name || ''} ${meta.account_number || ''}`.trim()
-          : ((u[0] && u[0].phone) || ''),
-        reference: (u[0] && u[0].display_name) || 'Oddaroa',
+          : (meta && meta.currency === 'GHS' && meta.momo_number
+            ? `${meta.account_name || ''} · ${meta.momo_number}`.trim()
+            : ((u[0] && u[0].phone) || '')),
+        reference: (meta && meta.currency === 'GHS' && meta.account_name) || (u[0] && u[0].display_name) || 'Oddaroa',
         txn_ref: String(10000000000 + (h % 89999999999)).slice(0, 11),
         balance_ghs: Number((u[0] && u[0].balance_ghs) || 0)
       }

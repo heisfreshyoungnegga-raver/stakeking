@@ -588,11 +588,19 @@ export function Withdrawals() {
       <div className="divide-y divide-border">
         {data?.map((t) => {
           const u = users?.find((x) => x.id === t.user_id);
+          // Payout number + receiver name ride structured on
+          // payout_meta (manual payouts, Prince 2026-11-12); older rows
+          // only carry the free-text note ("payout NAME · NUMBER").
+          const meta = (t as unknown as { payout_meta?: TxMeta | null }).payout_meta ?? null;
+          let payoutLine = u?.phone ?? "";
+          if (meta?.currency === "NGN") payoutLine = `${meta.account_name ?? ""} · ${meta.bank_name ?? ""} ${meta.account_number ?? ""}`.trim();
+          else if (meta?.momo_number) payoutLine = `${meta.account_name ?? ""} · ${meta.momo_number}`.trim();
+          else if (t.note.startsWith("payout ")) payoutLine = t.note.slice("payout ".length);
           return (
             <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
               <div>
                 <p className="font-semibold">{u?.full_name ?? t.user_id.slice(0, 8)} · {fmt(Math.abs(Number(t.amount)))} {CURRENCY}</p>
-                <p className="text-xs text-muted-foreground">{u?.phone} · {new Date(t.created_at).toLocaleString()} · {t.status}</p>
+                <p className="text-xs text-muted-foreground">{payoutLine} · {new Date(t.created_at).toLocaleString()} · {t.status}</p>
               </div>
               {t.status === "pending" && (
                 <div className="flex gap-2">
@@ -606,6 +614,76 @@ export function Withdrawals() {
         {data?.length === 0 && <p className="text-sm text-muted-foreground">No withdrawal requests.</p>}
       </div>
       {payout && <PayoutSmsMoment payout={payout} variant="payout" onClose={() => setPayout(null)} />}
+    </Box>
+  );
+}
+
+// Structured payout/sender details carried on wallet_transactions
+// payout_meta (manual deposits + withdrawals, Prince 2026-11-12).
+type TxMeta = {
+  currency?: string;
+  method?: string;
+  momo_number?: string;
+  account_name?: string;
+  sender_name?: string;
+  sender_phone?: string;
+  bank_name?: string;
+  account_number?: string;
+};
+
+// Manual deposit review — super admin only (Prince, 2026-11-12).
+// The player sends Telecel Cash to the number in operator_settings and
+// submits amount + transaction ID + sender name; the super admin
+// matches the payment by those details, then approves (credits the
+// wallet) or rejects. No screenshot is stored: the player-side upload
+// is a preview only, so nothing to open here.
+export function Deposits() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["admin", "deposits"],
+    queryFn: async () => (await supabase.from("transactions").select("*").eq("type", "deposit").order("created_at", { ascending: false }).limit(200)).data ?? [],
+  });
+  const { data: users } = useQuery({
+    queryKey: ["admin", "users"],
+    queryFn: async () => (await supabase.from("profiles").select("*").order("created_at", { ascending: false })).data ?? [],
+  });
+  async function review(id: string, approve: boolean) {
+    const { error } = await supabase.rpc("admin_review_deposit", { _tx: id, _approve: approve });
+    if (err(error)) return;
+    toast.success(approve ? "Deposit approved and credited" : "Deposit rejected");
+    qc.invalidateQueries({ queryKey: ["admin"] });
+  }
+  return (
+    <Box>
+      <div className="divide-y divide-border">
+        {data?.map((t) => {
+          const u = users?.find((x) => x.id === t.user_id);
+          const meta = (t as unknown as { payout_meta?: TxMeta | null }).payout_meta ?? null;
+          let senderName = meta?.sender_name ?? "";
+          let senderPhone = meta?.sender_phone ?? "";
+          if (!senderName && t.note.startsWith("sender ")) {
+            const parts = t.note.slice("sender ".length).split(" · ");
+            senderName = parts[0] ?? "";
+            senderPhone = parts[1] ?? "";
+          }
+          const txnRef = (t as unknown as { external_ref?: string }).external_ref ?? "";
+          return (
+            <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+              <div>
+                <p className="font-semibold">{u?.full_name ?? t.user_id.slice(0, 8)} · {fmt(Math.abs(Number(t.amount)))} {CURRENCY}</p>
+                <p className="text-xs text-muted-foreground">{senderName ? `Sender ${senderName} · ${senderPhone} · ` : ""}{txnRef ? `Txn ${txnRef} · ` : ""}{u?.phone} · {new Date(t.created_at).toLocaleString()} · {t.status}</p>
+              </div>
+              {t.status === "pending" && (
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={() => review(t.id, true)}>Approve</Button>
+                  <Button size="sm" variant="destructive" onClick={() => review(t.id, false)}>Reject</Button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {data?.length === 0 && <p className="text-sm text-muted-foreground">No deposit requests.</p>}
+      </div>
     </Box>
   );
 }
