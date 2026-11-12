@@ -8,7 +8,7 @@ import { CURRENCY, fmt } from "@/lib/betting";
 import { detectBetResult, type BetResult, type ResultBet } from "@/lib/bet-results";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogPortal } from "@/components/ui/dialog";
-import trophy from "@/assets/result-trophy-clear.png";
+import trophy from "@/assets/result-trophy-clear";
 import { shareBookingImage } from "@/lib/booking-image";
 
 const GOLD = "#f5c542";
@@ -111,7 +111,7 @@ export function BetResultNotifications({ children }: { children: ReactNode }) {
           <DialogDescription className="result-caption mt-3 text-2xl font-bold text-foreground">{CURRENCY} {fmt(result.amount)}</DialogDescription>
           <div className="relative mx-auto my-5 w-full motion-safe:animate-in motion-safe:zoom-in-90">
             <div aria-hidden className="win-glow absolute left-1/2 top-1/2 h-[70%] w-[62%] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(245,197,66,0.5),rgba(245,197,66,0.12)_55%,transparent_75%)] blur-xl" />
-            <img src={trophy} alt="Gold trophy cup" width={768} height={987} className="win-cup-float relative mx-auto h-[min(58dvh,620px)] w-full object-contain drop-shadow-[0_18px_28px_rgba(0,0,0,0.45)]" />
+            <img src={trophy} alt="Gold trophy cup" width={512} height={658} className="win-cup-float relative mx-auto h-[min(58dvh,620px)] w-full object-contain drop-shadow-[0_18px_28px_rgba(0,0,0,0.45)]" />
             <div aria-hidden className="pointer-events-none absolute inset-0 overflow-visible">
               {WIN_PARTICLES.map((p, i) => (
                 <span key={i} className={`win-particle${p.diamond ? " diamond" : ""}`} style={{ "--tx": p.tx, "--ty": p.ty, width: p.size, height: p.size, backgroundColor: p.color, animationDelay: p.delay } as CSSProperties} />
