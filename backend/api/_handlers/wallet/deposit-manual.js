@@ -1,15 +1,15 @@
 const { sql, readBody, send, guard, requireAuth, currencyOfPhone, moneyRules, depositFloorFor } = require('../../_lib');
 
-// Manual MoMo deposit — RETIRED 2026-11-13 (Prince: "take off the manual
-// deposit entirely"). New submissions are refused with 410, the same
-// pattern Oddaroa uses (push 124). The code below stays so the history
-// of the flow is readable; the admin review queue can still settle
-// pre-existing manual deposits, of which there are none pending.
+// Manual MoMo deposit — RESTORED 2026-11-13 (Prince: take the
+// automatic PayPulse gateway off, put manual back). New submissions
+// are accepted again; the super admin reviews each one in the
+// Deposits queue before the wallet is credited. The automatic
+// gateway is off at the operator_settings switch instead of by
+// deleting its code, so it can come back later.
 module.exports = guard(async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'method_not_allowed' });
   const auth = requireAuth(req, res);
   if (!auth) return;
-  return send(res, 410, { error: 'manual_deposits_off', detail: 'Manual deposits are switched off. Please use Instant MoMo.' });
   const { amount_ghs, sender_phone, sender_name, external_ref, proof_image } = await readBody(req);
   const amount = Number(amount_ghs);
   const urows = await sql('select phone, role from users where id = $1', [auth.uid]);

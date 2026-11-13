@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { PayPulseSettings } from "@/components/PayPulseSettings";
-import { MyTeam, Users, Withdrawals, rpcCall } from "./admin";
+import { MyTeam, Users, Withdrawals, Deposits, rpcCall } from "./admin";
 import { CURRENCY, fmt } from "@/lib/betting";
 
 export const Route = createFileRoute("/_authenticated/super-admin")({
@@ -42,11 +42,12 @@ function SuperAdmin() {
       <h1 className="text-4xl font-bold uppercase">Super Admin <span className="text-gold">portal</span></h1>
       <Tabs defaultValue="users">
         <TabsList className="flex h-auto w-full flex-wrap justify-start">
-          {["users", "withdrawals", "invites", "team", "PayPulse"].map((t) => (
+          {["users", "deposits", "withdrawals", "invites", "team", "PayPulse"].map((t) => (
             <TabsTrigger key={t} value={t} className="capitalize">{t === "invites" ? "Admin Invites" : t === "team" ? "My Team" : t}</TabsTrigger>
           ))}
         </TabsList>
         <TabsContent value="users"><Users /></TabsContent>
+        <TabsContent value="deposits"><Deposits /></TabsContent>
         <TabsContent value="withdrawals"><Withdrawals /></TabsContent>
         <TabsContent value="invites"><AdminInvites /></TabsContent>
         <TabsContent value="team"><MyTeam /></TabsContent>

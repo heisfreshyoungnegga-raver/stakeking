@@ -77,6 +77,11 @@ module.exports = guard(async (req, res) => {
       body: {
         amount: amountMinor / 100,
         currency: 'GHS',
+        // The docs name this merchant_reference, but the live API's
+        // validator requires `reference` (422, 2026-11-13) — send
+        // both with the same value; the webhook echoes it back as
+        // merchant_reference either way.
+        reference,
         merchant_reference: reference,
         description: 'StakeKing wallet deposit',
         customer: { phone: local },
@@ -93,16 +98,20 @@ module.exports = guard(async (req, res) => {
   }
 
   const p = (created.data && created.data.payment) || {};
-  if ((created.status === 201 || created.status === 200) && p.checkout_url && p.payment_ref) {
+  // Live shape (2026-11-13) names the payment ref `reference`, not
+  // the documented `payment_ref` — accept either. checkout_url and
+  // expires_at match the docs.
+  const paymentRef = p.payment_ref || p.reference;
+  if ((created.status === 201 || created.status === 200) && p.checkout_url && paymentRef) {
     await sql(
       `update payment_attempts set intent_id = $2, status = 'awaiting' where id = $1`,
-      [attemptId, String(p.payment_ref)]
+      [attemptId, String(paymentRef)]
     );
     return send(res, 201, {
       reference,
       status: 'awaiting',
       checkout_url: p.checkout_url,
-      payment_ref: String(p.payment_ref),
+      payment_ref: String(paymentRef),
       expires_at: p.expires_at || null,
       fee_ghs: typeof p.fee === 'number' ? p.fee : null,
       credit_ghs: amountMinor / 100
@@ -110,8 +119,21 @@ module.exports = guard(async (req, res) => {
   }
 
   const code = ((created.data && created.data.error) || 'payment_failed');
-  const message = (created.data && (created.data.message || created.data.error_description))
-    || ('PayPulse answered HTTP ' + created.status + (created.raw ? ' — ' + created.raw.slice(0, 200) : '') + '. The payment could not be started.');
-  await sql(`update payment_attempts set status = 'failed', fail_reason = $2 where id = $1`, [attemptId, String(code).slice(0, 120)]);
+  // A provider HTML page (the PayPulse bot challenge) must never reach
+  // the player's toast as raw markup — it reads as gibberish and alarm
+  // (seen live on Onelord's phone, 2026-11-13). The solver in _lib.js
+  // handles the known challenge; if it still comes back, the player
+  // gets a plain retry message. The attempt row keeps the marker so
+  // the failure mode stays diagnosable (challenge vs plain error,
+  // and whether the solver ran).
+  const challenged = !!created.challenged;
+  let message = (created.data && (created.data.message || created.data.error_description)) || '';
+  if (!message) {
+    message = challenged
+      ? 'PayPulse is not answering right now — please try again in a few minutes.'
+      : ('PayPulse answered HTTP ' + created.status + (created.raw ? ' — ' + created.raw : '') + '. The payment could not be started.');
+  }
+  const failMark = challenged ? code + (created.solved ? ':challenge_after_solve' : ':challenge_http_' + created.status) : code;
+  await sql(`update payment_attempts set status = 'failed', fail_reason = $2 where id = $1`, [attemptId, String(failMark).slice(0, 120)]);
   return send(res, created.status >= 400 && created.status < 500 ? created.status : 402, { error: String(code), detail: message, reference });
 });

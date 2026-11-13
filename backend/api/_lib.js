@@ -389,25 +389,90 @@ function paypulseConfig() {
   };
 }
 
+// PayPulse's API sits behind a JavaScript anti-bot challenge (Prince,
+// 2026-11-13, option 3: solve it server-side). A server call gets an
+// HTML page (aes.js, slowAES.decrypt(c,2,a,b)) instead of JSON. A
+// browser would run the script and come back with a cookie; we do the
+// same maths in Node: AES-128-CBC decrypt the page's ciphertext with
+// its key/IV, hex-encode it, send it as the cookie. The cookie lasts
+// 6 hours, so it is cached in memory. Fragile by nature — if PayPulse
+// changes the challenge, creates start failing again and the raw page
+// lands in the error detail (see deposit-momo.js).
+let paypulseCookie = { value: '', expiresAt: 0 };
+
+function isPayPulseChallenge(text) {
+  return typeof text === 'string' && text.includes('slowAES.decrypt') && text.includes('aes.js');
+}
+
+function solvePayPulseChallenge(html) {
+  const nums = {};
+  // Note: the page declares them as one comma-separated var statement
+  // (var a=toNumbers("..."),b=toNumbers("..."),c=toNumbers("...")),
+  // so only the first carries a `var` — match the assignment itself.
+  const varRe = /([A-Za-z_$][\w$]*)\s*=\s*toNumbers\("([0-9a-fA-F]+)"\)/g;
+  let m;
+  while ((m = varRe.exec(html)) !== null) nums[m[1]] = m[2];
+  const dec = html.match(/slowAES\.decrypt\(\s*([A-Za-z_$][\w$]*)\s*,\s*2\s*,\s*([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)\s*\)/);
+  const cookieName = (html.match(/document\.cookie\s*=\s*"([^"]+)"\s*\+/) || [])[1];
+  if (!dec || !cookieName) return null;
+  const ct = nums[dec[1]], key = nums[dec[2]], iv = nums[dec[3]];
+  if (!ct || !key || !iv) return null;
+  // Raw CBC decrypt, no padding stripping: slowAES returns the raw
+  // block bytes and toHex encodes them as-is (one 16-byte block).
+  const decipher = crypto.createDecipheriv('aes-128-cbc', Buffer.from(key, 'hex'), Buffer.from(iv, 'hex'));
+  decipher.setAutoPadding(false);
+  const plain = Buffer.concat([decipher.update(Buffer.from(ct, 'hex')), decipher.final()]);
+  // The quoted literal in the page is the whole cookie prefix, equals
+  // sign included ("__test=" on PayPulse) — the browser's
+  // document.cookie assignment appends the hex straight onto it.
+  // Adding another '=' here sent __test==<hex> (value starting with
+  // '='), which the server rejected and re-challenged (2026-11-13).
+  return cookieName + (cookieName.endsWith('=') ? '' : '=') + plain.toString('hex');
+}
+
 // One JSON call to the PayPulse API. Returns { status, data } and never
 // throws on an HTTP error status (callers branch on it); it throws only
 // when the network itself failed, which callers must treat as "unknown".
 async function paypulseFetch(path, { method = 'GET', body } = {}) {
   const { apiBase, secretKey } = paypulseConfig();
-  const res = await fetch(apiBase + path, {
-    method,
-    headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
-    body: body ? JSON.stringify(body) : undefined
-  });
-  const rawText = await res.text().catch(() => '');
+  const payload = body ? JSON.stringify(body) : undefined;
+  const headers = { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' };
+  if (paypulseCookie.value && Date.now() < paypulseCookie.expiresAt) headers.Cookie = paypulseCookie.value;
+  let res = await fetch(apiBase + path, { method, headers, body: payload });
+  let rawText = await res.text().catch(() => '');
   let data = {};
   try { data = JSON.parse(rawText); } catch { data = {}; }
-  // Keep a slice of the raw body: PayPulse's error replies do not
-  // always carry a JSON error/message field, and without the raw
-  // text a failed create is undebuggable (2026-11-13: the first live
-  // create failed with an empty JSON body). No secrets ever appear
-  // in a create response.
-  return { status: res.status, data, raw: rawText.slice(0, 500) };
+  let challenged = isPayPulseChallenge(rawText);
+  let solved = false;
+  // Bot-challenge page instead of JSON: solve it once and retry the
+  // same call with the cookie. One retry only — if the retry is also
+  // a challenge, the failure surfaces with the flags below so the
+  // caller can tell a challenge from a plain provider error.
+  if (challenged) {
+    const solvedCookie = solvePayPulseChallenge(rawText);
+    if (solvedCookie) {
+      solved = true;
+      paypulseCookie = { value: solvedCookie, expiresAt: Date.now() + (6 * 60 - 10) * 60 * 1000 };
+      headers.Cookie = solvedCookie;
+      // The challenge page's own script, once it sets the cookie,
+      // reloads the URL with ?i=1 — and only then does the server
+      // answer with real JSON (proven in a real browser, 2026-11-13).
+      // A retry without ?i=1 gets challenged again even with a valid
+      // cookie, so the retry carries the marker.
+      const retryPath = path + (path.includes('?') ? '&i=1' : '?i=1');
+      res = await fetch(apiBase + retryPath, { method, headers, body: payload });
+      rawText = await res.text().catch(() => '');
+      try { data = JSON.parse(rawText); } catch { data = {}; }
+      challenged = isPayPulseChallenge(rawText);
+    }
+  }
+  // Keep a generous slice of the raw body: PayPulse's error replies
+  // do not always carry a JSON error/message field, and the live
+  // response shape differs from the docs (2026-11-13: the live 201
+  // uses `reference`, not the documented `payment_ref`), so the full
+  // body is what makes a failed create diagnosable. No secrets ever
+  // appear in a create response.
+  return { status: res.status, data, raw: rawText.slice(0, 2000), challenged, solved };
 }
 
 // One JSON call to the ShinobiPay API. Returns { status, data } and never

@@ -50,8 +50,15 @@ module.exports = async (req, res) => {
     const data = event.data || {};
     await ensurePaymentTables();
 
+    // Live shape (2026-11-13): the create response names the payment
+    // ref `reference`, not the documented `payment_ref` — accept
+    // either everywhere a payment ref is read, or two different
+    // payments' success events would collide on one idempotency key.
+    const payRef = data.payment_ref || data.reference;
+    const merchantRef = data.merchant_reference || '';
+
     // Idempotency: a second delivery of the same event is a no-op.
-    eventId = 'paypulse:' + String(data.payment_ref || '') + ':' + String(event.event || '');
+    eventId = 'paypulse:' + String(payRef || '') + ':' + String(event.event || '');
     const seen = await sql(
       `insert into webhook_events (event_id) values ($1) on conflict (event_id) do nothing returning event_id`,
       [eventId]
@@ -61,7 +68,7 @@ module.exports = async (req, res) => {
     const rows = await sql(
       `select id, user_id, reference, intent_id, amount_ghs, amount_minor, network, status
        from payment_attempts where reference = $1 or intent_id = $2`,
-      [String(data.merchant_reference || ''), String(data.payment_ref || '')]
+      [String(merchantRef || ''), String(payRef || '')]
     );
     if (!rows.length) return send(res, 200, { ok: true, unmatched: true });
     const attempt = rows[0];
@@ -72,7 +79,19 @@ module.exports = async (req, res) => {
       // behind a silent 200: drop the idempotency record so
       // PayPulse's redelivery is processed fresh, and answer 500 so
       // it actually retries on its backoff.
-      const result = await settlePayPulseAttempt(attempt, Number(data.amount));
+      //
+      // Amount: the docs' webhook sample reports the gross amount the
+      // player paid, which the settler matches exactly. The live
+      // create response also carries fee + net_amount, so if a live
+      // webhook ever reports the NET instead, accept it when the
+      // payload's own fee reconciles it to the gross (paid + fee ==
+      // attempt amount) — the wallet still credits the full amount
+      // the player paid; the fee is Prince's cost, not the player's.
+      const paid = Number(data.amount);
+      const fee = Number(data.fee || 0);
+      const effective = (fee > 0 && paid + fee === Number(attempt.amount_ghs))
+        ? Number(attempt.amount_ghs) : paid;
+      const result = await settlePayPulseAttempt(attempt, effective);
       if (result === 'unverified') {
         await sql(`delete from webhook_events where event_id = $1`, [eventId]);
         return send(res, 500, { error: 'verification_failed' });
