@@ -1,4 +1,4 @@
-const { sql, readBody, send, guard, getSettings, cashoutQuoteFor, matchesById, genBookingCode, shinobiConfig, shinobiFetch } = require('../_lib');
+const { sql, readBody, send, guard, getSettings, cashoutQuoteFor, matchesById, genBookingCode, shinobiConfig, paypulseConfig } = require('../_lib');
 const { caller, isAdmin } = require('./caller');
 const { invoke } = require('./invoke');
 const { toEnginePick, toUiMarkets } = require('./markets');
@@ -21,32 +21,6 @@ const payoutHandler = require('../_handlers/admin/payout');
 
 const isSuper = (c) => c.service || (c.user && c.user.role === 'super_admin');
 
-// Deposit confirmations: a verified number+amount may dispatch
-// exactly one prompt, mirroring the UI's verify-first flow. Stored in
-// the database (adapter_deposit_confirmations) with a fifteen-minute
-// TTL: serverless instances share no memory, so the old in-memory map
-// lost confirmations whenever verify and create landed on different
-// instances, stranding users on a Confirm panel the server rejected.
-const CONFIRMATION_TTL_MS = 15 * 60000;
-async function saveConfirmation(userId, phone, network, amountMinor) {
-  await sql('delete from adapter_deposit_confirmations where expires_at <= now()', []);
-  await sql(
-    `insert into adapter_deposit_confirmations (user_id, phone, network, amount_minor, expires_at)
-     values ($1, $2, $3, $4, $5)
-     on conflict (user_id, phone, network, amount_minor)
-     do update set expires_at = excluded.expires_at`,
-    [userId, phone, network, amountMinor, new Date(Date.now() + CONFIRMATION_TTL_MS).toISOString()]
-  );
-}
-async function consumeConfirmation(userId, phone, network, amountMinor) {
-  const rows = await sql(
-    `delete from adapter_deposit_confirmations
-     where user_id = $1 and phone = $2 and network = $3 and amount_minor = $4 and expires_at > now()
-     returning user_id`,
-    [userId, phone, network, amountMinor]
-  );
-  return rows.length > 0;
-}
 function uiIntentStatus(s) {
   const v = String(s || '');
   if (v === 'succeeded' || v === 'completed' || v === 'success') return 'succeeded';
@@ -422,22 +396,28 @@ const RPC = {
   },
   async demo_deposit(c, a, res) { return rpcError(res, 'Demo deposits are retired on this platform.'); },
 
-  // ---- ShinobiPay deposit flow (drives the UI's deposit page) ----
+  // ---- PayPulse deposit flow (drives the UI's deposit page) ----
+  // PayPulse has no verify-number endpoint: the checkout page itself
+  // resolves the network from the phone and pushes the USSD prompt.
+  // So deposit_verify_number is local validation only, and
+  // deposit_create goes straight to the engine, which returns a
+  // checkout_url the player is redirected to. The signed webhook is
+  // the only path that credits a wallet.
   async payment_readiness(c, a, res) {
-    const cfg = shinobiConfig();
+    const cfg = paypulseConfig();
     const settings = await getSettings(['gateway_enabled']).catch(() => ({}));
     const ready = !!cfg.secretKey && settings.gateway_enabled !== '0';
     return send(res, 200, {
       ready,
-      accountMode: cfg.secretKey ? (cfg.secretKey.startsWith('sk_live_') ? 'live' : 'test') : null,
-      reason: ready ? '' : !cfg.secretKey ? 'ShinobiPay is not configured on the server yet.' : 'Instant deposits are switched off right now.',
+      accountMode: cfg.secretKey ? (cfg.secretKey.startsWith('pp_live_') ? 'live' : cfg.secretKey.startsWith('pp_test_') ? 'test' : 'live') : null,
+      reason: ready ? '' : !cfg.secretKey ? 'PayPulse is not configured on the server yet.' : 'Instant deposits are switched off right now.',
       // The deposit page renders method objects in the UI contract's
       // own shape (GHANA_PAYMENT_METHODS). The engine runs MoMo only,
       // so no card entry is offered.
       methods: ready ? [
         { id: 'MTN', method: 'mobile_money', label: 'MTN Mobile Money' },
         { id: 'TELECEL', method: 'mobile_money', label: 'Telecel Cash' },
-        { id: 'AIRTELTIGO', method: 'mobile_money', label: 'AirtelTigo Money' },
+        { id: 'AIRTELTIGO', method: 'mobile_money', label: 'AT Money' },
       ] : [],
       methodSource: 'engine',
     });
@@ -448,46 +428,21 @@ const RPC = {
     const amountMinor = Math.round(Number(a._amount_minor) || 0);
     const network = UI_NETWORKS[String(a._network || '').toLowerCase()] || '';
     if (!network) return send(res, 200, { ok: false, error: 'Select a mobile money network.', retryAfter: 0, quote: null });
+    if (!(amountMinor >= 20000) || amountMinor > 500000) return send(res, 200, { ok: false, error: 'Enter an amount between GHS 200 and GHS 5,000.', retryAfter: 0, quote: null });
     const digits = String(c.user.phone || '').replace(/[\s+]/g, '');
     const intl = digits.startsWith('233') ? digits : digits.startsWith('0') ? '233' + digits.slice(1) : digits;
-    let raw;
-    try {
-      const out = await shinobiFetch('/verify-number', {
-        method: 'POST',
-        body: { phone: intl, network, amount_minor: amountMinor, currency: 'GHS' },
-      });
-      raw = out.data || {};
-      if (out.status >= 400) return send(res, 200, { ok: false, error: (raw.error && raw.error.message) || 'Number verification is unavailable. Please retry later.', retryAfter: 0, quote: null });
-    } catch (e) {
-      return send(res, 200, { ok: false, error: 'Number verification is unavailable. Please retry later.', retryAfter: 0, quote: null });
-    }
-    if (raw.verified === false) {
-      return send(res, 200, {
-        ok: false,
-        error: raw.reason === 'no_account'
-          ? 'This number has no live MoMo account on this network. Check the number and network.'
-          : 'This number could not be verified. Check the number and network.',
-        retryAfter: 0, quote: null,
-      });
-    }
-    // Same acceptance rule the UI's own contract used: verified +
-    // can_prompt + an account name + provider amounts that add up.
-    const amt = raw.amount || {};
-    const feeMinor = Number(amt.customer_fee_minor);
-    const totalMinor = Number(amt.total_minor);
-    if (raw.verified !== true || raw.can_prompt !== true || !String(raw.account_name || '').trim()
-      || amt.currency !== 'GHS' || Number(amt.requested_minor) !== amountMinor
-      || !Number.isSafeInteger(feeMinor) || feeMinor < 0 || totalMinor !== amountMinor + feeMinor) {
-      return send(res, 200, { ok: false, error: 'Number verification is unavailable. Please retry later.', retryAfter: 0, quote: null });
-    }
+    if (!/^233\d{9}$/.test(intl)) return send(res, 200, { ok: false, error: 'Your account phone number is not a valid Ghana number.', retryAfter: 0, quote: null });
+    // PayPulse resolves the network from the number and pushes the
+    // prompt from its checkout page, so there is no provider
+    // verification to call here. The customer pays exactly the
+    // requested amount; PayPulse's fee is merchant-side.
     const quote = {
-      accountName: String(raw.account_name).trim(),
+      accountName: 'Mobile Money',
       requestedMinor: amountMinor,
-      feeMinor,
-      totalMinor,
+      feeMinor: 0,
+      totalMinor: amountMinor,
       currency: 'GHS',
     };
-    await saveConfirmation(c.user.id, intl, network, amountMinor);
     return send(res, 200, { ok: true, quote, error: '', retryAfter: 0 });
   },
 
@@ -500,10 +455,6 @@ const RPC = {
     const network = UI_NETWORKS[String(a._network || '').toLowerCase()] || '';
     const digits = String(c.user.phone || '').replace(/[\s+]/g, '');
     const intl = digits.startsWith('233') ? digits : digits.startsWith('0') ? '233' + digits.slice(1) : digits;
-    const confirmed = await consumeConfirmation(c.user.id, intl, network, amountMinor); // one confirmation, one prompt
-    if (!confirmed) {
-      return rpcError(res, 'Verify your number first, then confirm the exact total before paying.');
-    }
     const out = await invoke(depositMomoHandler, {
       user: c.user,
       body: { amount_ghs: amountMinor / 100, phone: intl, network },
@@ -514,10 +465,13 @@ const RPC = {
     return send(res, 200, {
       id: attempts.length ? attempts[0].intent_id : null,
       status: uiIntentStatus(out.json.status),
-      reference: 'stakeking-' + String(a._attempt_id || ''),
+      reference,
+      checkout_url: out.json.checkout_url || null,
+      expires_at: out.json.expires_at || null,
+      fee_ghs: out.json.fee_ghs ?? null,
       retryAt: 0,
       reason: '',
-      action: uiAction(out.json.next_action),
+      action: uiAction({ type: out.json.checkout_url ? 'redirect' : 'await_prompt', url: out.json.checkout_url || undefined, expires_at: out.json.expires_at || undefined }),
     });
   },
 

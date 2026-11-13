@@ -5,7 +5,7 @@ const handlers = {};
 // 'vip-buy' is deliberately NOT routed: the handler is PrimeStake
 // debris (it imports a helper that no longer exists and 500s) and
 // VIP is not a live Oddaroa product. The file stays on disk, dead.
-for (const name of ['status', 'otp', 'shinobipay-webhook']) handlers[name] = require('../_handlers/payments/' + name);
+for (const name of ['status', 'otp', 'paypulse-webhook']) handlers[name] = require('../_handlers/payments/' + name);
 module.exports = (req, res) => {
   const action = (req.query && req.query.action) || String(req.url || '').split('?')[0].split('/').pop();
   const handler = handlers[action];

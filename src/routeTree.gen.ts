@@ -28,7 +28,7 @@ import { Route as AuthenticatedWithdrawRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedAccountSectionRouteImport } from './routes/_authenticated/account.$section'
 import { Route as AuthenticatedMatchIdRouteImport } from './routes/_authenticated/match.$id'
 import { Route as AuthenticatedTicketBetIdRouteImport } from './routes/_authenticated/ticket.$betId'
-import { Route as ApiPublicShinobipayWebhookRouteImport } from './routes/api/public/shinobipay-webhook'
+import { Route as ApiPublicPaypulseWebhookRouteImport } from './routes/api/public/paypulse-webhook'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -127,10 +127,10 @@ const AuthenticatedTicketBetIdRoute =
     path: '/ticket/$betId',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const ApiPublicShinobipayWebhookRoute =
-  ApiPublicShinobipayWebhookRouteImport.update({
-    id: '/api/public/shinobipay-webhook',
-    path: '/api/public/shinobipay-webhook',
+const ApiPublicPaypulseWebhookRoute =
+  ApiPublicPaypulseWebhookRouteImport.update({
+    id: '/api/public/paypulse-webhook',
+    path: '/api/public/paypulse-webhook',
     getParentRoute: () => rootRouteImport,
   } as any)
 
@@ -153,7 +153,7 @@ export interface FileRoutesByFullPath {
   '/account/$section': typeof AuthenticatedAccountSectionRoute
   '/match/$id': typeof AuthenticatedMatchIdRoute
   '/ticket/$betId': typeof AuthenticatedTicketBetIdRoute
-  '/api/public/shinobipay-webhook': typeof ApiPublicShinobipayWebhookRoute
+  '/api/public/paypulse-webhook': typeof ApiPublicPaypulseWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -174,7 +174,7 @@ export interface FileRoutesByTo {
   '/account/$section': typeof AuthenticatedAccountSectionRoute
   '/match/$id': typeof AuthenticatedMatchIdRoute
   '/ticket/$betId': typeof AuthenticatedTicketBetIdRoute
-  '/api/public/shinobipay-webhook': typeof ApiPublicShinobipayWebhookRoute
+  '/api/public/paypulse-webhook': typeof ApiPublicPaypulseWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -197,7 +197,7 @@ export interface FileRoutesById {
   '/_authenticated/account/$section': typeof AuthenticatedAccountSectionRoute
   '/_authenticated/match/$id': typeof AuthenticatedMatchIdRoute
   '/_authenticated/ticket/$betId': typeof AuthenticatedTicketBetIdRoute
-  '/api/public/shinobipay-webhook': typeof ApiPublicShinobipayWebhookRoute
+  '/api/public/paypulse-webhook': typeof ApiPublicPaypulseWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -220,7 +220,7 @@ export interface FileRouteTypes {
     | '/account/$section'
     | '/match/$id'
     | '/ticket/$betId'
-    | '/api/public/shinobipay-webhook'
+    | '/api/public/paypulse-webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -241,7 +241,7 @@ export interface FileRouteTypes {
     | '/account/$section'
     | '/match/$id'
     | '/ticket/$betId'
-    | '/api/public/shinobipay-webhook'
+    | '/api/public/paypulse-webhook'
   id:
     | '__root__'
     | '/'
@@ -263,7 +263,7 @@ export interface FileRouteTypes {
     | '/_authenticated/account/$section'
     | '/_authenticated/match/$id'
     | '/_authenticated/ticket/$betId'
-    | '/api/public/shinobipay-webhook'
+    | '/api/public/paypulse-webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -272,7 +272,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   RegisterRoute: typeof RegisterRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
-  ApiPublicShinobipayWebhookRoute: typeof ApiPublicShinobipayWebhookRoute
+  ApiPublicPaypulseWebhookRoute: typeof ApiPublicPaypulseWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -410,11 +410,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTicketBetIdRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/api/public/shinobipay-webhook': {
-      id: '/api/public/shinobipay-webhook'
-      path: '/api/public/shinobipay-webhook'
-      fullPath: '/api/public/shinobipay-webhook'
-      preLoaderRoute: typeof ApiPublicShinobipayWebhookRouteImport
+    '/api/public/paypulse-webhook': {
+      id: '/api/public/paypulse-webhook'
+      path: '/api/public/paypulse-webhook'
+      fullPath: '/api/public/paypulse-webhook'
+      preLoaderRoute: typeof ApiPublicPaypulseWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -463,7 +463,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   RegisterRoute: RegisterRoute,
   ResetPasswordRoute: ResetPasswordRoute,
-  ApiPublicShinobipayWebhookRoute: ApiPublicShinobipayWebhookRoute,
+  ApiPublicPaypulseWebhookRoute: ApiPublicPaypulseWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

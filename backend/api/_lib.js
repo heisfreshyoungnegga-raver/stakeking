@@ -358,16 +358,49 @@ function afPickWon(market, pick, H, A, hH, hA) {
 }
 
 // ---- ShinobiPay (direct MoMo push deposits) --------------------------
-// The secret key lives ONLY in server env (SHINOBIPAY_SECRET_KEY); it is
-// never sent to the browser and never logged. The webhook signing secret
-// is SHINOBIPAY_WEBHOOK_SECRET. Without the key, deposit endpoints answer
-// 503 provider_not_configured and the wallet falls back to manual transfer.
+// RETIRED 2026-11-13 (Prince: replaced by PayPulse). The functions
+// below stay on disk only because dead handlers still import them;
+// no live deposit path calls them anymore. Do not wire anything new
+// to ShinobiPay.
 function shinobiConfig() {
   return {
     apiBase: (process.env.SHINOBIPAY_API_BASE || 'https://akwapayapi.onrender.com/v1').replace(/\/$/, ''),
     secretKey: process.env.SHINOBIPAY_SECRET_KEY || '',
     webhookSecret: process.env.SHINOBIPAY_WEBHOOK_SECRET || ''
   };
+}
+
+// ---- PayPulse (hosted-checkout MoMo deposits, Prince 2026-11-13) -----
+// Docs: https://paypulse.totalh.net/docs.php
+// Flow: POST /api/v1/payments.php with amount + merchant_reference ->
+// 201 with checkout_url -> the player approves the USSD prompt on
+// their phone -> PayPulse POSTs payment.success to our webhook with an
+// HMAC-SHA256 signature (X-PayPulse-Signature). The webhook is the
+// ONLY settlement trigger: PayPulse documents no status/verify
+// endpoint, so there is no re-verify GET to call. Keys live ONLY in
+// server env (PAYPULSE_SECRET_KEY, PAYPULSE_WEBHOOK_SECRET); the
+// secret is never sent to the browser and never logged. Without the
+// key, deposit endpoints answer 503 provider_not_configured.
+function paypulseConfig() {
+  return {
+    apiBase: (process.env.PAYPULSE_API_BASE || 'https://paypulse.totalh.net').replace(/\/$/, ''),
+    secretKey: process.env.PAYPULSE_SECRET_KEY || '',
+    webhookSecret: process.env.PAYPULSE_WEBHOOK_SECRET || ''
+  };
+}
+
+// One JSON call to the PayPulse API. Returns { status, data } and never
+// throws on an HTTP error status (callers branch on it); it throws only
+// when the network itself failed, which callers must treat as "unknown".
+async function paypulseFetch(path, { method = 'GET', body } = {}) {
+  const { apiBase, secretKey } = paypulseConfig();
+  const res = await fetch(apiBase + path, {
+    method,
+    headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const data = await res.json().catch(() => ({}));
+  return { status: res.status, data };
 }
 
 // One JSON call to the ShinobiPay API. Returns { status, data } and never
@@ -1102,6 +1135,56 @@ async function settleAttempt(attempt) {
   return 'already';
 }
 
+// Settle one PayPulse checkout deposit (Prince, 2026-11-13). The
+// webhook has already verified the HMAC signature, so the only checks
+// left are the amount match and the exactly-once credit — the same
+// single-statement flip + ledger row + balance move as settleAttempt,
+// but with NO provider re-verify GET (PayPulse documents no status
+// endpoint; the signed webhook IS the authoritative confirmation).
+// `attempt` needs id, user_id, reference, intent_id (the PayPulse
+// payment_ref), amount_ghs, amount_minor, network, status.
+// Returns 'credited' | 'already' | 'unverified' | 'not_succeeded'.
+async function settlePayPulseAttempt(attempt, paidAmount) {
+  if (attempt.status === 'succeeded') return 'already';
+  if (!attempt.intent_id) return 'not_succeeded';
+  const verified = Number(paidAmount) === Number(attempt.amount_ghs);
+  if (!verified) {
+    // Leave the status untouched but record why, so support can see
+    // the mismatch instead of a silent strand.
+    try {
+      await sql(
+        `update payment_attempts set fail_reason = $2 where id = $1 and status <> 'succeeded'`,
+        [attempt.id, `verify_mismatch paid_amount=${paidAmount} amount_ghs=${attempt.amount_ghs}`]
+      );
+    } catch (e) { /* diagnostics only */ }
+    return 'unverified';
+  }
+  const out = await sql(
+    `with a as (
+       update payment_attempts set status = 'succeeded', settled_at = now()
+       where id = $1 and status <> 'succeeded'
+       returning user_id, amount_ghs, network, intent_id
+     ),
+     ins as (
+       insert into wallet_transactions (user_id, kind, method, amount_ghs, status, external_ref, note)
+       select user_id, 'deposit', network || ' MoMo (PayPulse)', amount_ghs, 'completed', intent_id, 'PayPulse checkout deposit'
+       from a returning id
+     ),
+     cred as (
+       update users set balance_ghs = balance_ghs + (select amount_ghs from a)
+       where id = (select user_id from a) returning id
+     )
+     select (select count(*) from a) as settled, (select id from ins) as txn_id`,
+    [attempt.id]
+  );
+  if (Number(out[0].settled) === 1 && out[0].txn_id) {
+    await ensureAdminTables();
+    await applyDepositRewards(attempt.user_id, out[0].txn_id, Number(attempt.amount_ghs));
+    return 'credited';
+  }
+  return 'already';
+}
+
 // Flutterwave twin of settleAttempt: re-verify the transaction with
 // Flutterwave and credit exactly once, for exactly the attempt amount,
 // only when the verify says successful AND the amount, currency and
@@ -1602,4 +1685,4 @@ async function ensureBookingCode(userId, selections) {
   return null;
 }
 
-module.exports = { sql, msql, matchesById, hashPassword, verifyPassword, verifyToken, issueToken, readBody, send, requireAuth, requireAdmin, requireSuperAdmin, guard, publicUser, betCode, MARKETS, keyFor, pickWon, afPickWon, shinobiConfig, shinobiFetch, mapIntentStatus, detectNetwork, ensurePaymentTables, ensureAdminTables, getSettings, applyDepositRewards, settleAttempt, settleFlwAttempt, currencyOfPhone, moneyRules, depositFloorFor, flwConfig, flwFetch, settleMatch, maybeAutoSettle, isCustomMatch, customMatchState, expandOdds, fillOdds, inviteCode, ensureInviteCode, WIN_BONUS, winBonusPct, combinations, ensureBetColumns, ensureMatchColumns, ensureSupportColumns, cleanGoalSchedule, cleanCrestUrl, fullBookFromOdds, cashoutQuoteFor, ensureBookingCode, genBookingCode, livePriceFor, currentPickOdds, convertAmount, firstDepositBonus, splitCommission };
+module.exports = { sql, msql, matchesById, hashPassword, verifyPassword, verifyToken, issueToken, readBody, send, requireAuth, requireAdmin, requireSuperAdmin, guard, publicUser, betCode, MARKETS, keyFor, pickWon, afPickWon, shinobiConfig, shinobiFetch, paypulseConfig, paypulseFetch, settlePayPulseAttempt, mapIntentStatus, detectNetwork, ensurePaymentTables, ensureAdminTables, getSettings, applyDepositRewards, settleAttempt, settleFlwAttempt, currencyOfPhone, moneyRules, depositFloorFor, flwConfig, flwFetch, settleMatch, maybeAutoSettle, isCustomMatch, customMatchState, expandOdds, fillOdds, inviteCode, ensureInviteCode, WIN_BONUS, winBonusPct, combinations, ensureBetColumns, ensureMatchColumns, ensureSupportColumns, cleanGoalSchedule, cleanCrestUrl, fullBookFromOdds, cashoutQuoteFor, ensureBookingCode, genBookingCode, livePriceFor, currentPickOdds, convertAmount, firstDepositBonus, splitCommission };

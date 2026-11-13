@@ -19,7 +19,7 @@ const exactRoutes = {
   '/api/support': require('./api/support'),
   '/api/tips': require('./api/_handlers/tips/list'),
   '/api/wallet': require('./api/_handlers/wallet/index'),
-  '/api/payments/shinobipay-webhook': require('./api/payments/shinobipay-webhook'),
+  '/api/payments/paypulse-webhook': require('./api/payments/paypulse-webhook'),
   '/api/payments/flutterwave-webhook': require('./api/payments/flutterwave-webhook'),
 };
 const groupRouters = {
