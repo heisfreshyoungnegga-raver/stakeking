@@ -1,17 +1,15 @@
 const { sql, readBody, send, guard, requireAuth, currencyOfPhone, moneyRules, depositFloorFor } = require('../../_lib');
 
-// Manual MoMo deposit (StakeKing is manual-only since 2026-11-12, Prince's
-// order: the ShinobiPay gateway is off and deposits go to the Telecel
-// number in operator_settings). Recorded as PENDING. It only counts
-// toward the withdrawal rule (and the balance) after the SUPER ADMIN
-// confirms the money actually arrived — the transaction ID and the
-// sender's name ride on the row so the super admin can match the
-// payment before approving. The player-side screenshot is a preview
-// only (Prince, 2026-11-12: no blob storage) — it is never sent here.
+// Manual MoMo deposit — RETIRED 2026-11-13 (Prince: "take off the manual
+// deposit entirely"). New submissions are refused with 410, the same
+// pattern Oddaroa uses (push 124). The code below stays so the history
+// of the flow is readable; the admin review queue can still settle
+// pre-existing manual deposits, of which there are none pending.
 module.exports = guard(async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { error: 'method_not_allowed' });
   const auth = requireAuth(req, res);
   if (!auth) return;
+  return send(res, 410, { error: 'manual_deposits_off', detail: 'Manual deposits are switched off. Please use Instant MoMo.' });
   const { amount_ghs, sender_phone, sender_name, external_ref, proof_image } = await readBody(req);
   const amount = Number(amount_ghs);
   const urows = await sql('select phone, role from users where id = $1', [auth.uid]);

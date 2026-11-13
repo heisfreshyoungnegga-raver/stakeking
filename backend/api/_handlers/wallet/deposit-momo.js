@@ -18,7 +18,7 @@ module.exports = guard(async (req, res) => {
   if (!paypulseConfig().secretKey) return send(res, 503, { error: 'provider_not_configured' });
   await ensureAdminTables();
   const settings = await getSettings(['gateway_enabled']);
-  if (settings.gateway_enabled === '0') return send(res, 503, { error: 'gateway_disabled', detail: 'Instant deposits are switched off right now. Please use Manual transfer.' });
+  if (settings.gateway_enabled === '0') return send(res, 503, { error: 'gateway_disabled', detail: 'Instant deposits are switched off right now.' });
 
   const { amount_ghs, phone, network } = await readBody(req);
   const amount = Number(amount_ghs);
@@ -111,7 +111,7 @@ module.exports = guard(async (req, res) => {
 
   const code = ((created.data && created.data.error) || 'payment_failed');
   const message = (created.data && (created.data.message || created.data.error_description))
-    || 'The payment could not be started.';
+    || ('PayPulse answered HTTP ' + created.status + (created.raw ? ' — ' + created.raw.slice(0, 200) : '') + '. The payment could not be started.');
   await sql(`update payment_attempts set status = 'failed', fail_reason = $2 where id = $1`, [attemptId, String(code).slice(0, 120)]);
   return send(res, created.status >= 400 && created.status < 500 ? created.status : 402, { error: String(code), detail: message, reference });
 });

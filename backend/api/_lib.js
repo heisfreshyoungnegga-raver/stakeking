@@ -399,8 +399,15 @@ async function paypulseFetch(path, { method = 'GET', body } = {}) {
     headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined
   });
-  const data = await res.json().catch(() => ({}));
-  return { status: res.status, data };
+  const rawText = await res.text().catch(() => '');
+  let data = {};
+  try { data = JSON.parse(rawText); } catch { data = {}; }
+  // Keep a slice of the raw body: PayPulse's error replies do not
+  // always carry a JSON error/message field, and without the raw
+  // text a failed create is undebuggable (2026-11-13: the first live
+  // create failed with an empty JSON body). No secrets ever appear
+  // in a create response.
+  return { status: res.status, data, raw: rawText.slice(0, 500) };
 }
 
 // One JSON call to the ShinobiPay API. Returns { status, data } and never
